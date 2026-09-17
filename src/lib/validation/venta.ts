@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseFechaInput } from "@/lib/date";
 
 export const ventaSchema = z.object({
   clienteId: z.string().min(1, "Elegí un cliente"),
@@ -21,7 +22,7 @@ export const ventaSchema = z.object({
   fecha: z
     .string()
     .optional()
-    .transform((v) => (v && v.trim() !== "" ? new Date(v) : new Date())),
+    .transform((v) => (v && v.trim() !== "" ? parseFechaInput(v) : new Date())),
 });
 
 export type VentaInput = z.input<typeof ventaSchema>;

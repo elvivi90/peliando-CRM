@@ -2,10 +2,9 @@ import Link from "next/link";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/ui/stat-card";
-import { TipoBadge } from "@/components/ui/badge";
 import { VentasChart } from "@/components/dashboard/ventas-chart";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { getResumenMes } from "@/lib/services/reportes";
 import { resumenCuentasCorrientesPendientes } from "@/lib/services/cuenta-corriente";
 

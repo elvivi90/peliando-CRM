@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { crearEvento } from "@/app/(app)/eventos/actions";
+import { todayInputValue } from "@/lib/date";
 
 export default function NuevoEventoPage() {
   const [nombre, setNombre] = useState("");
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => todayInputValue());
   const [lugar, setLugar] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { crearVenta, previsualizarPrecio } from "@/app/(app)/ventas/actions";
 import { formatMoney } from "@/lib/format";
+import { todayInputValue } from "@/lib/date";
 
 type Cliente = { id: string; nombre: string; apellido: string; tipo: string };
 type Producto = { id: string; nombre: string; stockActual: number };
@@ -34,9 +35,9 @@ export function VentaForm({
   const [cantidadEntregada, setCantidadEntregada] = useState("1");
   const [montoCobrado, setMontoCobrado] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => todayInputValue());
 
-  const [preview, setPreview] = useState<Preview>(null);
+  const [fetchedPreview, setFetchedPreview] = useState<Preview>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -44,17 +45,18 @@ export function VentaForm({
   const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
   const esConcesion = clienteSeleccionado?.tipo === "CONCESION";
   const cantidadNum = Number(cantidad) || 0;
+  const consultaValida = Boolean(clienteId) && !esConcesion && cantidadNum > 0;
+  const preview = consultaValida ? fetchedPreview : null;
+  const cantidadEntregadaFinal = entregaParcial ? cantidadEntregada : cantidad;
 
   useEffect(() => {
-    if (!clienteId || esConcesion || cantidadNum <= 0) {
-      setPreview(null);
-      return;
-    }
+    if (!consultaValida) return;
     let activo = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- flag de carga de un fetch legitimo
     setPreviewLoading(true);
     previsualizarPrecio(clienteId, cantidadNum).then((res) => {
       if (!activo) return;
-      setPreview(res);
+      setFetchedPreview(res);
       setPreviewLoading(false);
       if (res && montoCobrado === "") {
         setMontoCobrado(res.tipo === "MINORISTA" ? String(res.precioTotal) : "0");
@@ -64,11 +66,7 @@ export function VentaForm({
       activo = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clienteId, cantidadNum, esConcesion]);
-
-  useEffect(() => {
-    if (!entregaParcial) setCantidadEntregada(cantidad);
-  }, [cantidad, entregaParcial]);
+  }, [clienteId, cantidadNum, consultaValida]);
 
   const precioTotalFinal = useMemo(() => {
     if (!preview) return 0;
@@ -94,7 +92,7 @@ export function VentaForm({
           productoId,
           eventoId,
           cantidad,
-          cantidadEntregada,
+          cantidadEntregada: cantidadEntregadaFinal,
           precioUnitarioManual: usarPrecioManual && precioManual ? precioManual : undefined,
           montoCobrado: montoCobrado || "0",
           descripcion,
@@ -253,7 +251,10 @@ export function VentaForm({
           <input
             type="checkbox"
             checked={entregaParcial}
-            onChange={(e) => setEntregaParcial(e.target.checked)}
+            onChange={(e) => {
+              setEntregaParcial(e.target.checked);
+              if (e.target.checked) setCantidadEntregada(cantidad);
+            }}
           />
           Entrega parcial (no se entrega toda la cantidad todavía)
         </label>

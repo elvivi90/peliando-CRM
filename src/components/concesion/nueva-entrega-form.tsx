@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { crearEntregaConcesion } from "@/app/(app)/concesion/actions";
+import { todayInputValue } from "@/lib/date";
 
 type Cliente = { id: string; nombre: string; apellido: string };
 type Producto = { id: string; nombre: string; stockActual: number };
@@ -16,7 +17,7 @@ export function NuevaEntregaForm({
   const [clienteId, setClienteId] = useState("");
   const [productoId, setProductoId] = useState(productos[0]?.id ?? "");
   const [cantidad, setCantidad] = useState("");
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => todayInputValue());
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 

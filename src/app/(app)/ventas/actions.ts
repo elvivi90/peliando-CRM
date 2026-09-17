@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario } from "@/lib/auth";
 import { sugerirPrecio, PricingError } from "@/lib/pricing";
+import { parseFechaInput } from "@/lib/date";
 import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
 import type { TipoVenta } from "@prisma/client";
 
@@ -139,7 +140,7 @@ export async function registrarEntrega(ventaId: string, cantidad: number, fecha?
 
   await prisma.$transaction([
     prisma.entrega.create({
-      data: { ventaId, cantidad, fecha: fecha ? new Date(fecha) : new Date() },
+      data: { ventaId, cantidad, fecha: fecha ? parseFechaInput(fecha) : new Date() },
     }),
     prisma.venta.update({
       where: { id: ventaId },

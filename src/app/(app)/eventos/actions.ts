@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { parseFechaInput } from "@/lib/date";
 
 const eventoSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio"),
@@ -17,7 +18,7 @@ export async function crearEvento(input: { nombre: string; fecha: string; lugar:
   const evento = await prisma.evento.create({
     data: {
       nombre: data.nombre,
-      fecha: new Date(data.fecha),
+      fecha: parseFechaInput(data.fecha),
       lugar: data.lugar || null,
     },
   });

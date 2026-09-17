@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario } from "@/lib/auth";
 import { saldoConcesion } from "@/lib/services/concesion";
+import { parseFechaInput } from "@/lib/date";
 
 const entregaSchema = z.object({
   clienteId: z.string().min(1, "Elegí un cliente"),
@@ -37,7 +38,7 @@ export async function crearEntregaConcesion(input: {
         clienteId: data.clienteId,
         productoId: data.productoId,
         cantidadEntregada: data.cantidadEntregada,
-        fechaEntrega: new Date(data.fecha),
+        fechaEntrega: parseFechaInput(data.fecha),
       },
     }),
     prisma.producto.update({
@@ -90,7 +91,7 @@ export async function crearLiquidacion(input: {
         precioTotal: data.montoCobrado,
         montoCobrado: data.montoCobrado,
         origen: "MANUAL",
-        fecha: new Date(data.fecha),
+        fecha: parseFechaInput(data.fecha),
         descripcion: `Liquidación de concesión (${concesion.producto.nombre})`,
       },
     });
@@ -100,7 +101,7 @@ export async function crearLiquidacion(input: {
         concesionId: data.concesionId,
         cantidadVendida: data.cantidadVendida,
         montoCobrado: data.montoCobrado,
-        fecha: new Date(data.fecha),
+        fecha: parseFechaInput(data.fecha),
         ventaId: venta.id,
       },
     });
@@ -140,7 +141,7 @@ export async function crearDevolucion(input: {
       data: {
         concesionId: data.concesionId,
         cantidad: data.cantidad,
-        fecha: new Date(data.fecha),
+        fecha: parseFechaInput(data.fecha),
       },
     }),
     prisma.producto.update({

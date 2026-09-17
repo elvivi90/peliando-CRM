@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { crearGasto } from "@/app/(app)/gastos/actions";
+import { todayInputValue } from "@/lib/date";
 
 const CATEGORIAS = [
   { value: "TRANSPORTE", label: "Transporte" },
@@ -14,7 +15,7 @@ export function GastoForm({ eventos }: { eventos: { id: string; nombre: string }
   const [categoria, setCategoria] = useState<string>("TRANSPORTE");
   const [concepto, setConcepto] = useState("");
   const [monto, setMonto] = useState("");
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => todayInputValue());
   const [eventoId, setEventoId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

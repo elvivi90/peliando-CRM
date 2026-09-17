@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { crearLiquidacion, crearDevolucion } from "@/app/(app)/concesion/actions";
 import { formatDate, formatMoney } from "@/lib/format";
+import { todayInputValue } from "@/lib/date";
 
 type Concesion = {
   id: string;
@@ -24,7 +25,7 @@ export function ConcesionCard({ concesion }: { concesion: Concesion }) {
   const [modo, setModo] = useState<"none" | "liquidar" | "devolver">("none");
   const [cantidad, setCantidad] = useState("");
   const [monto, setMonto] = useState("");
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(() => todayInputValue());
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 

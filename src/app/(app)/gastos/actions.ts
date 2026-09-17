@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario } from "@/lib/auth";
+import { parseFechaInput } from "@/lib/date";
 
 const gastoSchema = z.object({
   categoria: z.enum(["TRANSPORTE", "COMIDA", "MARKETING_PRODUCCION", "OTROS"]),
@@ -32,7 +33,7 @@ export async function crearGasto(input: {
       categoria: data.categoria,
       concepto: data.concepto,
       monto: data.monto,
-      fecha: new Date(data.fecha),
+      fecha: parseFechaInput(data.fecha),
       eventoId: data.eventoId ?? null,
       usuarioId: usuario.id,
     },

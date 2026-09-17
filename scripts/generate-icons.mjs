@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync } from "fs";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -9,7 +9,7 @@ mkdirSync(outDir, { recursive: true });
 
 // Icono chunky: cuadrado navy con esquinas redondeadas, franja de marca
 // abajo y una "P" amarilla — coherente con el logo usado en header/login.
-function svgIcon({ size, padding, rounded }) {
+function svgIcon({ size, rounded }) {
   const stripeH = size * 0.08;
   return `
 <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
