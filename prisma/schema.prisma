@@ -1,0 +1,267 @@
+// CRM Peliando — schema de base de datos
+// Ver docs/Especificaciones — CRM Peliando.docx (seccion 6) para el modelo de referencia.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Conexion pooled (pgbouncer, puerto 6543) para runtime de la app.
+  url       = env("DATABASE_URL")
+  // Conexion directa (puerto 5432) usada solo por `prisma migrate`.
+  directUrl = env("DIRECT_URL")
+}
+
+enum TipoCliente {
+  MINORISTA
+  MAYORISTA
+  DISTRIBUIDOR
+  CONCESION
+}
+
+enum EstadoLista {
+  ACTIVA
+  HISTORICA
+}
+
+// CONCESION se usa unicamente en las Ventas generadas automaticamente
+// al liquidar una Concesion (ver LiquidacionConcesion.venta).
+enum TipoVenta {
+  MINORISTA
+  MAYORISTA
+  DISTRIBUIDOR
+  CONCESION
+}
+
+enum OrigenVenta {
+  MANUAL
+  WEBHOOK_TIENDUP
+}
+
+enum CategoriaGasto {
+  TRANSPORTE
+  COMIDA
+  MARKETING_PRODUCCION
+  OTROS
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  // id del usuario en Supabase Auth
+  authId    String   @unique
+  nombre    String
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  ventas      Venta[]
+  gastos      Gasto[]
+  comentarios Comentario[]
+
+  @@map("usuarios")
+}
+
+model Cliente {
+  id               String          @id @default(uuid())
+  nombre           String
+  apellido         String
+  email            String?     @unique
+  telefono         String?
+  direccion        String?
+  tipo             TipoCliente
+  // Solo mayoristas con acuerdo propio que no sigue la lista de precios
+  precioParticular Decimal?        @db.Decimal(12, 2)
+  listaPrecioId    String?
+  listaPrecio      ListaDePrecios? @relation(fields: [listaPrecioId], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  comentarios Comentario[]
+  ventas      Venta[]
+  concesiones Concesion[]
+
+  @@index([tipo])
+  @@map("clientes")
+}
+
+model Comentario {
+  id        String   @id @default(uuid())
+  clienteId String
+  cliente   Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  texto     String
+  fecha     DateTime @default(now())
+
+  @@map("comentarios")
+}
+
+// Solo una lista puede estar ACTIVA a la vez. Al crear una nueva, la anterior
+// pasa a HISTORICA. Nunca se borran (trazabilidad historica de ventas).
+model ListaDePrecios {
+  id                  String      @id @default(uuid())
+  nombre              String
+  fechaInicioVigencia DateTime
+  fechaFinVigencia    DateTime?
+  estado              EstadoLista @default(ACTIVA)
+  // Precio Venta Publico: precio por defecto para ventas minoristas
+  pvp                 Decimal     @db.Decimal(12, 2)
+  createdAt           DateTime    @default(now())
+
+  tramos   TramoDePrecio[]
+  clientes Cliente[]
+  ventas   Venta[]
+
+  @@map("listas_de_precios")
+}
+
+model TramoDePrecio {
+  id             String         @id @default(uuid())
+  listaId        String
+  lista          ListaDePrecios @relation(fields: [listaId], references: [id], onDelete: Cascade)
+  cantidadDesde  Int
+  precioUnitario Decimal        @db.Decimal(12, 2)
+
+  ventas Venta[]
+
+  @@unique([listaId, cantidadDesde])
+  @@map("tramos_de_precio")
+}
+
+model Producto {
+  id          String   @id @default(uuid())
+  nombre      String
+  descripcion String?
+  stockActual Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ventas      Venta[]
+  concesiones Concesion[]
+
+  @@map("productos")
+}
+
+// Agrupador de un dia/ocasion (ferias, encuentros).
+model Evento {
+  id     String   @id @default(uuid())
+  nombre String
+  fecha  DateTime
+  lugar  String?
+
+  ventas Venta[]
+  gastos Gasto[]
+
+  @@map("eventos")
+}
+
+model Venta {
+  id         String    @id @default(uuid())
+  clienteId  String
+  cliente    Cliente   @relation(fields: [clienteId], references: [id])
+  productoId String
+  producto   Producto  @relation(fields: [productoId], references: [id])
+  usuarioId  String
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id])
+  eventoId   String?
+  evento     Evento?   @relation(fields: [eventoId], references: [id])
+  tipo       TipoVenta
+
+  // FKs opcionales — se guardan para trazabilidad historica aunque la
+  // lista de precios cambie despues.
+  listaId String?
+  lista   ListaDePrecios? @relation(fields: [listaId], references: [id])
+  tramoId String?
+  tramo   TramoDePrecio?  @relation(fields: [tramoId], references: [id])
+
+  cantidad          Int
+  // Permite entrega parcial en cualquier tipo de venta.
+  cantidadEntregada Int         @default(0)
+  precioUnitario    Decimal     @db.Decimal(12, 2)
+  precioTotal       Decimal     @db.Decimal(12, 2)
+  // Mirror de cantidadEntregada para pagos: permite calcular
+  // saldo_pendiente_cobro en cuenta corriente sin una entidad Pago separada.
+  montoCobrado      Decimal     @default(0) @db.Decimal(12, 2)
+  descripcion       String?
+  origen            OrigenVenta @default(MANUAL)
+  fecha             DateTime    @default(now())
+  createdAt         DateTime    @default(now())
+
+  entregas             Entrega[]
+  liquidacionConcesion LiquidacionConcesion?
+
+  @@index([fecha])
+  @@index([tipo])
+  @@index([clienteId])
+  @@map("ventas")
+}
+
+model Entrega {
+  id       String   @id @default(uuid())
+  ventaId  String
+  venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cantidad Int
+  fecha    DateTime @default(now())
+
+  @@map("entregas")
+}
+
+// El local recibe mercaderia sin que sea venta todavia (prestamo de stock).
+model Concesion {
+  id                String   @id @default(uuid())
+  clienteId         String
+  cliente           Cliente  @relation(fields: [clienteId], references: [id])
+  productoId        String
+  producto          Producto @relation(fields: [productoId], references: [id])
+  cantidadEntregada Int
+  fechaEntrega      DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  liquidaciones LiquidacionConcesion[]
+  devoluciones  DevolucionConcesion[]
+
+  @@map("concesiones")
+}
+
+// Liquidacion periodica y manual: se convierte en una Venta real retroactiva
+// (tipo CONCESION) que no vuelve a descontar stock.
+model LiquidacionConcesion {
+  id              String    @id @default(uuid())
+  concesionId     String
+  concesion       Concesion @relation(fields: [concesionId], references: [id], onDelete: Cascade)
+  cantidadVendida Int
+  montoCobrado    Decimal   @db.Decimal(12, 2)
+  fecha           DateTime  @default(now())
+
+  ventaId String? @unique
+  venta   Venta?  @relation(fields: [ventaId], references: [id])
+
+  @@map("liquidaciones_concesion")
+}
+
+model DevolucionConcesion {
+  id          String    @id @default(uuid())
+  concesionId String
+  concesion   Concesion @relation(fields: [concesionId], references: [id], onDelete: Cascade)
+  cantidad    Int
+  fecha       DateTime  @default(now())
+
+  @@map("devoluciones_concesion")
+}
+
+model Gasto {
+  id        String         @id @default(uuid())
+  categoria CategoriaGasto
+  concepto  String
+  monto     Decimal        @db.Decimal(12, 2)
+  fecha     DateTime
+  eventoId  String?
+  evento    Evento?        @relation(fields: [eventoId], references: [id])
+  usuarioId String
+  usuario   Usuario        @relation(fields: [usuarioId], references: [id])
+  createdAt DateTime       @default(now())
+
+  @@index([fecha])
+  @@index([categoria])
+  @@map("gastos")
+}

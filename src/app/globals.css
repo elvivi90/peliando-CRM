@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --color-crema: #f0dfc9;
+  --color-tarjeta: #faf3e4;
+  --color-navy: #142653;
+  --color-amarillo: #f9bd16;
+  --color-rosa: #c9579a;
+  --color-azul: #1a66aa;
+}
+
+@theme inline {
+  --color-crema: var(--color-crema);
+  --color-tarjeta: var(--color-tarjeta);
+  --color-navy: var(--color-navy);
+  --color-amarillo: var(--color-amarillo);
+  --color-rosa: var(--color-rosa);
+  --color-azul: var(--color-azul);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--color-crema);
+  color: var(--color-navy);
+}
+
+::selection {
+  background: var(--color-amarillo);
+  color: var(--color-navy);
+}
+
+/* Utilidades "chunky" reusadas en todo el CRM: borde navy grueso,
+   esquinas bien redondeadas, sin sombras suaves tipo SaaS generico. */
+@layer components {
+  .card-chunky {
+    background: var(--color-tarjeta);
+    border: 3px solid var(--color-navy);
+    border-radius: 20px;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 3px solid var(--color-navy);
+    border-radius: 12px;
+    background: var(--color-amarillo);
+    color: var(--color-navy);
+    font-weight: 900;
+    padding: 0.6rem 1.1rem;
+    box-shadow: 4px 4px 0 rgba(20, 38, 83, 0.15);
+    transition: transform 0.1s ease;
+    cursor: pointer;
+  }
+  .btn-primary:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 rgba(20, 38, 83, 0.15);
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 2px solid var(--color-navy);
+    border-radius: 12px;
+    background: var(--color-tarjeta);
+    color: var(--color-navy);
+    font-weight: 700;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+  }
+  .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .input-chunky {
+    border: 2px solid var(--color-navy);
+    border-radius: 12px;
+    background: var(--color-tarjeta);
+    color: var(--color-navy);
+    padding: 0.55rem 0.85rem;
+    font-weight: 600;
+  }
+  .input-chunky:focus {
+    outline: 3px solid var(--color-amarillo);
+    outline-offset: 0;
+  }
+
+  .franja-marca {
+    display: flex;
+    flex: 0 0 auto;
+  }
+  .franja-marca > div {
+    flex: 1;
+  }
+}
