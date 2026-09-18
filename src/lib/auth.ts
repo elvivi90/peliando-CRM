@@ -15,7 +15,12 @@ export async function getCurrentUsuario() {
 
   if (!user) redirect("/login");
 
-  const usuario = await prisma.usuario.upsert({
+  // En el camino frecuente (cada navegacion) alcanza con una lectura; el
+  // upsert solo hace falta la primera vez que alguien inicia sesion.
+  const existente = await prisma.usuario.findUnique({ where: { authId: user.id } });
+  if (existente) return existente;
+
+  return prisma.usuario.upsert({
     where: { authId: user.id },
     update: {},
     create: {
@@ -27,6 +32,4 @@ export async function getCurrentUsuario() {
         "Usuario",
     },
   });
-
-  return usuario;
 }
