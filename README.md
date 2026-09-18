@@ -27,8 +27,9 @@ PWA instalable (sin publicar en las tiendas de apps).
    - La conexión **directa** (puerto 5432) → `DIRECT_URL`
 3. En **Project Settings → API**, copiar `Project URL` y `anon public key` y
    `service_role key`.
-4. Copiar `.env.example` a `.env` y completar los 5 valores anteriores, más
-   un `TIENDUP_WEBHOOK_SECRET` propio (cualquier string largo y random).
+4. Copiar `.env.example` a `.env` y completar los 5 valores anteriores. Las
+   variables de Tiendup (`TIENDUP_API_KEY`, `TIENDUP_WEBHOOK_SECRET`) se
+   completan más adelante, cuando se configure esa integración (ver abajo).
 
 ### 2. Crear los 4 usuarios del equipo
 
@@ -82,13 +83,28 @@ y de ahí a `/dashboard` una vez autenticado.
 - **Producto**: la especificación lo modela como entidad propia aunque hoy
   exista un solo juego; se agregó un CRUD simple (`/productos`) para poder
   sumar variantes (ediciones, expansiones) sin tocar el schema.
-- **Webhook de Tiendup** (`/api/webhooks/tiendup`): como no había
-  documentación del payload real de Tiendup, se definió un contrato propio
-  razonable (ver comentario al inicio de
-  `src/app/api/webhooks/tiendup/route.ts`) que hay que ajustar cuando se
-  tenga acceso a la webhook real de Tiendup. Se protege con un secreto
-  compartido (`TIENDUP_WEBHOOK_SECRET`) enviado en el header
-  `x-webhook-secret`.
+- **Webhook de Tiendup** (`/api/webhooks/tiendup`): crea una venta minorista
+  cuando se confirma el pago de una orden en Tiendup. El endpoint solo usa el
+  evento del webhook para sacar el id de la orden; el resto de los datos
+  (cliente, items, monto) se traen de la fuente de verdad,
+  `GET /orders/{id}` de la API pública de Tiendup. Detalle completo del
+  diseño y las decisiones tomadas en el comentario al inicio de
+  `src/app/api/webhooks/tiendup/route.ts`.
+
+  **Setup en el panel de Tiendup:**
+  1. Configuraciones → API → generar una API Key → pegarla en
+     `TIENDUP_API_KEY`.
+  2. Configuraciones → Webhooks → crear webhook con la URL
+     `https://<tu-dominio>/api/webhooks/tiendup`, suscripto **solo** al
+     evento `orders.payment_paid` (no `orders.creation`, que puede no
+     llegar a pagarse nunca).
+  3. Tiendup genera un secreto propio para firmar los requests — pegarlo tal
+     cual en `TIENDUP_WEBHOOK_SECRET` (no inventar uno).
+  4. Usar el botón "enviar evento de prueba" de Tiendup para validar que el
+     endpoint responde 200. El algoritmo de firma (HMAC-SHA256 sobre el body
+     crudo) es una suposición basada en la convención estándar de la
+     industria — no está documentado públicamente —, así que si la prueba
+     da 401 hay que revisar ese punto puntual.
 - **PWA**: manifest + service worker mínimo (sin cacheo, para que los datos
   siempre estén frescos) — alcanza para "Agregar a pantalla de inicio" en
   Android/iOS sin pasar por las tiendas de apps.
