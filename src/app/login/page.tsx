@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -41,8 +42,15 @@ export default function LoginPage() {
 
           <div className="p-8 flex flex-col gap-6">
             <div className="flex flex-col items-center gap-2 text-center">
-              <div className="w-16 h-16 rounded-2xl border-[3px] border-navy bg-amarillo flex items-center justify-center text-3xl font-black">
-                P
+              <div className="w-16 h-16 rounded-2xl border-[3px] border-navy overflow-hidden">
+                <Image
+                  src="/logo-peliando.png"
+                  alt="Peliando"
+                  width={64}
+                  height={64}
+                  className="w-full h-full object-cover"
+                  priority
+                />
               </div>
               <h1 className="text-xl font-black uppercase tracking-wide">CRM Peliando</h1>
               <p className="text-sm text-navy/60 font-medium">
