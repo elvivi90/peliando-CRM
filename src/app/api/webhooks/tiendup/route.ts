@@ -1,113 +1,182 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { sugerirPrecio, PricingError } from "@/lib/pricing";
 
 /**
- * Webhook de Tiendup (seccion 3.3): permite que una venta minorista se cree
- * automaticamente desde la pagina de Tiendup, sin intervencion manual.
+ * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
+ * cuando se confirma el pago de una orden en Tiendup.
  *
- * Contrato esperado (ajustar cuando se tenga la doc real de Tiendup):
- * POST /api/webhooks/tiendup
- * Header: x-webhook-secret: <TIENDUP_WEBHOOK_SECRET>
- * Body JSON: {
- *   clienteEmail: string,
- *   clienteNombre?: string,
- *   clienteApellido?: string,
- *   productoId?: string,        // si no se manda, se usa el unico producto existente
- *   cantidad: number,
- *   precioTotal?: number,       // si no se manda, se usa el PVP de la lista activa
- *   fecha?: string              // ISO date, default: ahora
- * }
+ * Referencia (relevada de https://public-api.tiendup.com/openapi y
+ * https://intercom.help/tiendup/es/articles/13833124-webhooks-en-tiendup):
+ * - En el panel de Tiendup (Configuraciones -> Webhooks) se crea un webhook
+ *   con esta URL, suscripto SOLO al evento `orders.payment_paid` (no
+ *   `orders.creation`, que puede no llegar a pagarse nunca). Tiendup genera
+ *   ahi un secreto propio para firmar los requests.
+ * - Cada request llega firmado con el header `x-tiendup-signature`. El
+ *   algoritmo exacto no esta documentado publicamente; se asume HMAC-SHA256
+ *   sobre el body crudo (convencion estandar de la industria). Si Tiendup
+ *   usa otro esquema, este chequeo va a rechazar todo y hay que ajustarlo
+ *   con un ejemplo real (Tiendup permite "enviar evento de prueba").
+ * - El body del evento en si NO esta documentado, asi que en vez de confiar
+ *   en su forma exacta, solo se usa para sacar el id de la orden; el resto
+ *   de los datos (cliente, items, precio) se trae con la fuente de verdad:
+ *   GET /orders/{order_id} de la API publica (autenticada con X-API-Key).
  */
 
+const BUSINESS_SLUG = process.env.TIENDUP_BUSINESS_SLUG || "peliando";
 const SISTEMA_AUTH_ID = "sistema-tiendup";
 
-const bodySchema = z.object({
-  clienteEmail: z.string().email(),
-  clienteNombre: z.string().trim().optional(),
-  clienteApellido: z.string().trim().optional(),
-  productoId: z.string().optional(),
-  cantidad: z.coerce.number().int().positive(),
-  precioTotal: z.coerce.number().positive().optional(),
-  fecha: z.string().optional(),
-});
+type TiendupOrderItem = {
+  product_id?: number;
+  ecommerce_type?: string;
+  quantity?: number;
+};
+
+type TiendupOrder = {
+  id: number;
+  hash: string;
+  creation_date: string;
+  currency?: string;
+  total_amount: string;
+  items: TiendupOrderItem[];
+  customer: {
+    email: string;
+    name?: string;
+    last_name?: string;
+  };
+};
+
+function verificarFirma(rawBody: string, signatureHeader: string | null, secret: string) {
+  if (!signatureHeader) return false;
+
+  const esperado = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const recibido = signatureHeader.replace(/^sha256=/, "").trim();
+
+  const a = Buffer.from(esperado, "hex");
+  const b = Buffer.from(recibido, "hex");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function extraerOrderId(body: unknown): number | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as Record<string, unknown>;
+  const data = b.data as Record<string, unknown> | undefined;
+
+  const candidato = data?.id ?? data?.order_id ?? b.id ?? b.order_id ?? b.resource_id;
+  const n = Number(candidato);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function fetchOrder(orderId: number, apiKey: string): Promise<TiendupOrder> {
+  const res = await fetch(`https://${BUSINESS_SLUG}.public-api.tiendup.com/orders/${orderId}`, {
+    headers: { "X-API-Key": apiKey },
+  });
+
+  if (!res.ok) {
+    throw new Error(`No se pudo obtener la orden #${orderId} de Tiendup (HTTP ${res.status})`);
+  }
+
+  const json = await res.json();
+  return json.data as TiendupOrder;
+}
 
 export async function POST(request: NextRequest) {
-  const secretHeader = request.headers.get("x-webhook-secret");
-  if (!process.env.TIENDUP_WEBHOOK_SECRET || secretHeader !== process.env.TIENDUP_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const secret = process.env.TIENDUP_WEBHOOK_SECRET;
+  const apiKey = process.env.TIENDUP_API_KEY;
+
+  if (!secret || !apiKey) {
+    return NextResponse.json(
+      { error: "Falta configurar TIENDUP_WEBHOOK_SECRET o TIENDUP_API_KEY" },
+      { status: 500 },
+    );
+  }
+
+  const rawBody = await request.text();
+
+  if (!verificarFirma(rawBody, request.headers.get("x-tiendup-signature"), secret)) {
+    return NextResponse.json({ error: "Firma invalida" }, { status: 401 });
   }
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Body invalido" }, { status: 400 });
   }
 
-  const parsed = bodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  // Solo nos interesa el pago confirmado; otros eventos se reconocen sin
+  // efecto para que Tiendup no los siga reintentando.
+  const eventType = (body as Record<string, unknown>)?.event as string | undefined;
+  if (eventType && eventType !== "orders.payment_paid") {
+    return NextResponse.json({ ok: true, skipped: eventType });
   }
-  const data = parsed.data;
 
-  const producto = data.productoId
-    ? await prisma.producto.findUnique({ where: { id: data.productoId } })
-    : await prisma.producto.findFirst({ orderBy: { createdAt: "asc" } });
-
-  if (!producto) {
-    return NextResponse.json({ error: "No se encontro el producto" }, { status: 404 });
+  const orderId = extraerOrderId(body);
+  if (!orderId) {
+    return NextResponse.json({ error: "No se encontro el id de la orden en el evento" }, { status: 400 });
   }
-  if (producto.stockActual < data.cantidad) {
+
+  // Idempotencia: Tiendup puede reintentar la entrega del mismo evento.
+  const descripcion = `Tiendup orden #${orderId}`;
+  const yaExiste = await prisma.venta.findFirst({ where: { descripcion } });
+  if (yaExiste) {
+    return NextResponse.json({ ok: true, ventaId: yaExiste.id, duplicado: true });
+  }
+
+  let order: TiendupOrder;
+  try {
+    order = await fetchOrder(orderId, apiKey);
+  } catch (err) {
     return NextResponse.json(
-      { error: `Stock insuficiente (disponible: ${producto.stockActual})` },
+      { error: err instanceof Error ? err.message : "Error al consultar la orden" },
+      { status: 502 },
+    );
+  }
+
+  const cantidad = order.items
+    .filter((i) => !i.ecommerce_type || i.ecommerce_type === "retail")
+    .reduce((s, i) => s + (i.quantity ?? 0), 0);
+
+  if (cantidad <= 0) {
+    return NextResponse.json({ ok: true, skipped: "sin items de producto fisico" });
+  }
+
+  const precioTotal = Number(order.total_amount);
+  if (!Number.isFinite(precioTotal)) {
+    return NextResponse.json({ error: "total_amount invalido en la orden" }, { status: 502 });
+  }
+  const precioUnitario = precioTotal / cantidad;
+
+  const producto = await prisma.producto.findFirst({ orderBy: { createdAt: "asc" } });
+  if (!producto) {
+    return NextResponse.json({ error: "No hay ningun producto cargado en el CRM" }, { status: 404 });
+  }
+  if (producto.stockActual < cantidad) {
+    return NextResponse.json(
+      { error: `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual})` },
       { status: 409 },
     );
   }
 
+  const nombre = order.customer.name || order.customer.last_name || order.customer.email.split("@")[0];
+  const apellido = order.customer.name && order.customer.last_name ? order.customer.last_name : "";
+
   const [cliente, usuarioSistema] = await Promise.all([
     prisma.cliente.upsert({
-      where: { email: data.clienteEmail },
+      where: { email: order.customer.email },
       update: {},
-      create: {
-        nombre: data.clienteNombre || data.clienteEmail.split("@")[0],
-        apellido: data.clienteApellido || "",
-        email: data.clienteEmail,
-        tipo: "MINORISTA",
-      },
+      create: { nombre, apellido, email: order.customer.email, tipo: "MINORISTA" },
     }),
     prisma.usuario.upsert({
       where: { authId: SISTEMA_AUTH_ID },
       update: {},
-      create: {
-        authId: SISTEMA_AUTH_ID,
-        nombre: "Tiendup (automático)",
-        email: "tiendup@sistema.local",
-      },
+      create: { authId: SISTEMA_AUTH_ID, nombre: "Tiendup (automático)", email: "tiendup@sistema.local" },
     }),
   ]);
 
-  let precioUnitario: number;
-  let precioTotal: number;
-  let listaId: string | null = null;
-
-  if (data.precioTotal) {
-    precioTotal = data.precioTotal;
-    precioUnitario = data.precioTotal / data.cantidad;
-  } else {
-    try {
-      const sugerencia = await sugerirPrecio({ tipo: "MINORISTA", cantidad: data.cantidad });
-      precioUnitario = sugerencia.precioUnitario.toNumber();
-      precioTotal = sugerencia.precioTotal.toNumber();
-      listaId = sugerencia.listaId;
-    } catch (err) {
-      const message = err instanceof PricingError ? err.message : "Error al calcular el precio";
-      return NextResponse.json({ error: message }, { status: 422 });
-    }
-  }
-
-  const fecha = data.fecha ? new Date(data.fecha) : new Date();
+  // "YYYY-MM-DD HH:mm:ss" -> Date (tratado como hora local, no UTC).
+  const fecha = new Date(order.creation_date.replace(" ", "T"));
 
   const venta = await prisma.$transaction(async (tx) => {
     const nuevaVenta = await tx.venta.create({
@@ -116,24 +185,21 @@ export async function POST(request: NextRequest) {
         productoId: producto.id,
         usuarioId: usuarioSistema.id,
         tipo: "MINORISTA",
-        listaId,
-        cantidad: data.cantidad,
-        cantidadEntregada: data.cantidad,
+        cantidad,
+        cantidadEntregada: cantidad,
         precioUnitario,
         precioTotal,
         montoCobrado: precioTotal,
         origen: "WEBHOOK_TIENDUP",
         fecha,
+        descripcion,
       },
     });
 
-    await tx.entrega.create({
-      data: { ventaId: nuevaVenta.id, cantidad: data.cantidad, fecha },
-    });
-
+    await tx.entrega.create({ data: { ventaId: nuevaVenta.id, cantidad, fecha } });
     await tx.producto.update({
       where: { id: producto.id },
-      data: { stockActual: { decrement: data.cantidad } },
+      data: { stockActual: { decrement: cantidad } },
     });
 
     return nuevaVenta;
