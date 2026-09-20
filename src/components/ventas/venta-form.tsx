@@ -1,92 +1,168 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { crearVenta, previsualizarPrecio } from "@/app/(app)/ventas/actions";
-import { formatMoney } from "@/lib/format";
-import { todayInputValue } from "@/lib/date";
+import { useEffect, useState, useTransition } from "react";
+import {
+  crearVenta,
+  previsualizarPrecio,
+  type PrevisualizacionPrecio,
+} from "@/app/(app)/ventas/actions";
+import { formatDate, formatMoney } from "@/lib/format";
+import { parseFechaInput, todayInputValue } from "@/lib/date";
+import { SelectorConAlta } from "@/components/ventas/selector-con-alta";
+import { ModalClienteRapido, type ClienteCreado } from "@/components/ventas/modal-cliente-rapido";
+import { ModalEventoRapido, type EventoCreado } from "@/components/ventas/modal-evento-rapido";
 
 type Cliente = { id: string; nombre: string; apellido: string; tipo: string };
 type Producto = { id: string; nombre: string; stockActual: number };
 type Evento = { id: string; nombre: string };
 
-type Preview = {
-  tipo: string;
-  precioUnitario: number;
-  precioTotal: number;
-  editable: boolean;
-} | null;
+// RAPIDA = minorista sin cliente (ideal para eventos).
+// MAYORISTA = con cliente (mayorista o distribuidor), precio por tramo.
+type Modo = "RAPIDA" | "MAYORISTA";
+
+const TOTAL_PASOS = 4;
 
 export function VentaForm({
-  clientes,
+  clientes: clientesIniciales,
   productos,
-  eventos,
+  eventos: eventosIniciales,
 }: {
   clientes: Cliente[];
   productos: Producto[];
   eventos: Evento[];
 }) {
+  const [paso, setPaso] = useState(1);
+  const [modo, setModo] = useState<Modo>("RAPIDA");
+
+  const [clientes, setClientes] = useState(clientesIniciales);
+  const [eventos, setEventos] = useState(eventosIniciales);
+
   const [clienteId, setClienteId] = useState("");
   const [productoId, setProductoId] = useState(productos[0]?.id ?? "");
-  const [eventoId, setEventoId] = useState("");
   const [cantidad, setCantidad] = useState("1");
-  const [precioManual, setPrecioManual] = useState("");
-  const [usarPrecioManual, setUsarPrecioManual] = useState(false);
-  const [entregaParcial, setEntregaParcial] = useState(false);
-  const [cantidadEntregada, setCantidadEntregada] = useState("1");
-  const [montoCobrado, setMontoCobrado] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [fecha, setFecha] = useState(() => todayInputValue());
+  // null = usar el precio sugerido; string = el usuario lo editó
+  const [precioEditado, setPrecioEditado] = useState<string | null>(null);
+  const [editandoPrecio, setEditandoPrecio] = useState(false);
 
-  const [fetchedPreview, setFetchedPreview] = useState<Preview>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [fecha, setFecha] = useState(() => todayInputValue());
+  const [eventoId, setEventoId] = useState("");
+  // null = usar el monto por defecto (rápida: total cobrado; mayorista: 0)
+  const [montoInput, setMontoInput] = useState<string | null>(null);
+
+  const [clienteCreado, setClienteCreado] = useState(false);
+  const [eventoCreado, setEventoCreado] = useState(false);
+  const [modal, setModal] = useState<"cliente" | "evento" | null>(null);
+
+  const [fetchedPreview, setFetchedPreview] = useState<PrevisualizacionPrecio>(null);
+  const [cargandoPrecio, setCargandoPrecio] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const cantidadNum = Number(cantidad) || 0;
-  const consultaValida = Boolean(clienteId) && cantidadNum > 0;
+  const clienteConsulta = modo === "MAYORISTA" ? clienteId : "";
+  const consultaValida = cantidadNum > 0 && (modo === "RAPIDA" || Boolean(clienteId));
   const preview = consultaValida ? fetchedPreview : null;
-  const cantidadEntregadaFinal = entregaParcial ? cantidadEntregada : cantidad;
 
   useEffect(() => {
     if (!consultaValida) return;
     let activo = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- flag de carga de un fetch legitimo
-    setPreviewLoading(true);
-    previsualizarPrecio(clienteId, cantidadNum).then((res) => {
+    setCargandoPrecio(true);
+    previsualizarPrecio(clienteConsulta || null, cantidadNum).then((res) => {
       if (!activo) return;
       setFetchedPreview(res);
-      setPreviewLoading(false);
-      if (res && montoCobrado === "") {
-        setMontoCobrado(res.tipo === "MINORISTA" ? String(res.precioTotal) : "0");
-      }
+      setCargandoPrecio(false);
     });
     return () => {
       activo = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clienteId, cantidadNum, consultaValida]);
+  }, [clienteConsulta, cantidadNum, consultaValida]);
 
-  const precioTotalFinal = useMemo(() => {
+  const productoSel = productos.find((p) => p.id === productoId);
+  const clienteSel = clientes.find((c) => c.id === clienteId);
+  const sinStock = Boolean(productoSel && cantidadNum > productoSel.stockActual);
+
+  const precioEditable = preview?.editable ?? false;
+  const precioUnitario = (() => {
     if (!preview) return 0;
-    if (usarPrecioManual && precioManual) return Number(precioManual) * cantidadNum;
-    return preview.precioTotal;
-  }, [preview, usarPrecioManual, precioManual, cantidadNum]);
+    if (precioEditable && precioEditado !== null && precioEditado !== "") return Number(precioEditado);
+    return preview.precioUnitario;
+  })();
+  const precioValido = Number.isFinite(precioUnitario) && precioUnitario >= 0;
+  const precioTotal = precioUnitario * cantidadNum;
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const montoFinal = montoInput ?? String(modo === "RAPIDA" ? precioTotal : 0);
+  const montoNum = Number(montoFinal);
+  const montoValido = Number.isFinite(montoNum) && montoNum >= 0 && montoNum <= precioTotal + 0.005;
+
+  const puedeAvanzarPaso2 =
+    consultaValida &&
+    !cargandoPrecio &&
+    Boolean(preview) &&
+    precioValido &&
+    !sinStock &&
+    Boolean(productoId);
+  const puedeAvanzarPaso3 = Boolean(fecha) && montoValido;
+
+  function irA(n: number) {
     setError(null);
+    setPaso(n);
+  }
+
+  function elegirModo(m: Modo) {
+    setModo(m);
+    setPrecioEditado(null);
+  }
+
+  function handleCantidad(v: string) {
+    setCantidad(v);
+    setPrecioEditado(null);
+  }
+
+  function handleCliente(id: string) {
+    setClienteId(id);
+    setClienteCreado(false);
+    setPrecioEditado(null);
+  }
+
+  function handleClienteCreado(c: ClienteCreado) {
+    setClientes((prev) => [...prev, c]);
+    setClienteId(c.id);
+    setClienteCreado(true);
+    setPrecioEditado(null);
+    setModal(null);
+  }
+
+  function handleEventoCreado(e: EventoCreado) {
+    setEventos((prev) => [{ id: e.id, nombre: e.nombre }, ...prev]);
+    setEventoId(e.id);
+    setEventoCreado(true);
+    setModal(null);
+  }
+
+  function registrar() {
+    setError(null);
+    const precioManual =
+      preview &&
+      precioEditable &&
+      precioEditado !== null &&
+      precioEditado !== "" &&
+      Number(precioEditado) !== preview.precioUnitario
+        ? precioEditado
+        : undefined;
 
     startTransition(async () => {
       try {
         await crearVenta({
-          clienteId,
+          clienteId: modo === "MAYORISTA" ? clienteId : "",
           productoId,
           eventoId,
           cantidad,
-          cantidadEntregada: cantidadEntregadaFinal,
-          precioUnitarioManual: usarPrecioManual && precioManual ? precioManual : undefined,
-          montoCobrado: montoCobrado || "0",
-          descripcion,
+          // El diseño no tiene entrega parcial: se entrega todo. Lo pendiente
+          // se puede ajustar después desde el detalle de la venta.
+          cantidadEntregada: cantidad,
+          precioUnitarioManual: precioManual,
+          montoCobrado: montoFinal || "0",
           fecha,
         });
       } catch (err) {
@@ -97,203 +173,511 @@ export function VentaForm({
     });
   }
 
+  const opcionesClientes = clientes
+    .filter((c) => c.tipo === "MAYORISTA" || c.tipo === "DISTRIBUIDOR")
+    .map((c) => ({
+      id: c.id,
+      label: `${`${c.nombre} ${c.apellido}`.trim()} (${c.tipo.toLowerCase()})`,
+    }));
+  const opcionesEventos = eventos.map((e) => ({ id: e.id, label: e.nombre }));
+  const eventoSel = eventos.find((e) => e.id === eventoId);
+
   return (
-    <form onSubmit={handleSubmit} className="card-chunky p-6 flex flex-col gap-5 max-w-2xl">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Cliente" required>
-          <select
-            className="input-chunky"
-            value={clienteId}
-            onChange={(e) => setClienteId(e.target.value)}
-            required
-          >
-            <option value="">Elegir cliente...</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre} {c.apellido} ({c.tipo.toLowerCase()})
-              </option>
-            ))}
-          </select>
-        </Field>
+    <>
+      <div className="card-chunky p-6 flex flex-col gap-5 max-w-md">
+        <Stepper paso={paso} />
 
-        <Field label="Producto" required>
-          <select
-            className="input-chunky"
-            value={productoId}
-            onChange={(e) => setProductoId(e.target.value)}
-            required
+        {paso === 1 && (
+          <form
+            className="flex flex-col gap-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              irA(2);
+            }}
           >
-            {productos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} (stock: {p.stockActual})
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+            <Encabezado titulo="¿Qué tipo de venta?" subtitulo="Define el resto del flujo" />
+            <div role="radiogroup" aria-label="Tipo de venta" className="flex flex-col gap-2.5">
+              <OpcionTipo
+                activo={modo === "RAPIDA"}
+                onClick={() => elegirModo("RAPIDA")}
+                icono={<IconoRayo />}
+                titulo="Venta rápida"
+                detalle="Sin cliente — ideal para eventos"
+              />
+              <OpcionTipo
+                activo={modo === "MAYORISTA"}
+                onClick={() => elegirModo("MAYORISTA")}
+                icono={<IconoLocal />}
+                titulo="Mayorista/Distribuidor"
+                detalle="Con cliente, precio por tramo"
+              />
+            </div>
+            <div className="flex gap-2.5">
+              <button type="submit" className="btn-primary">
+                Siguiente →
+              </button>
+            </div>
+          </form>
+        )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Cantidad" required>
-          <input
-            type="number"
-            min="1"
-            className="input-chunky"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-            required
-          />
-        </Field>
-        <Field label="Evento (opcional)">
-          <select
-            className="input-chunky"
-            value={eventoId}
-            onChange={(e) => setEventoId(e.target.value)}
+        {paso === 2 && (
+          <form
+            className="flex flex-col gap-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (puedeAvanzarPaso2) irA(3);
+            }}
           >
-            <option value="">Sin evento</option>
-            {eventos.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.nombre}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+            {modo === "RAPIDA" ? (
+              <Encabezado titulo="Producto y precio" subtitulo="Cantidad y precio en un solo paso" />
+            ) : (
+              <Encabezado
+                titulo="Cliente, producto y precio"
+                subtitulo="El precio depende del cliente y la cantidad"
+              />
+            )}
 
-      {clienteId && (
-        <div className="rounded-xl border-2 border-navy bg-amarillo/15 px-4 py-3.5 flex flex-col gap-2">
-          {previewLoading ? (
-            <span className="text-sm font-semibold">Calculando precio...</span>
-          ) : preview ? (
-            <>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-xs font-extrabold uppercase text-navy/60">
-                  Precio {preview.editable ? "sugerido" : "(fórmula distribuidor, fijo)"}
+            {modo === "MAYORISTA" && (
+              <Campo
+                label="Cliente"
+                required
+                insignia={clienteCreado ? { texto: "Creado recién", tono: "amarillo" } : undefined}
+              >
+                <SelectorConAlta
+                  value={clienteId}
+                  opciones={opcionesClientes}
+                  onChange={handleCliente}
+                  placeholder="Buscar cliente..."
+                  buscador
+                  crearLabel="Crear cliente nuevo"
+                  onCrear={() => setModal("cliente")}
+                  tono="amarillo"
+                />
+                <button
+                  type="button"
+                  onClick={() => setModal("cliente")}
+                  className="w-full text-left rounded-lg bg-amarillo/25 hover:bg-amarillo/40 px-3 py-1.5 text-xs font-extrabold"
+                >
+                  + ¿No está en la lista? Crear cliente nuevo
+                </button>
+              </Campo>
+            )}
+
+            <Campo label="Producto" required>
+              <select
+                className="input-chunky"
+                value={productoId}
+                onChange={(e) => setProductoId(e.target.value)}
+                required
+              >
+                {productos.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre} (stock: {p.stockActual})
+                  </option>
+                ))}
+              </select>
+            </Campo>
+
+            <Campo label="Cantidad" required>
+              <input
+                type="number"
+                min="1"
+                inputMode="numeric"
+                className="input-chunky w-24"
+                value={cantidad}
+                onChange={(e) => handleCantidad(e.target.value)}
+                required
+              />
+              {sinStock && productoSel && (
+                <span className="text-xs font-bold text-rosa">
+                  Stock insuficiente (disponible: {productoSel.stockActual}).
                 </span>
-                <span className="font-black text-lg">
-                  {formatMoney(usarPrecioManual && precioManual ? Number(precioManual) : preview.precioUnitario)}{" "}
-                  <span className="text-xs font-semibold text-navy/50">c/u</span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm font-bold">
-                <span>Total</span>
-                <span>{formatMoney(precioTotalFinal)}</span>
-              </div>
-              {preview.editable && (
-                <label className="flex items-center gap-2 mt-1 text-xs font-bold">
-                  <input
-                    type="checkbox"
-                    checked={usarPrecioManual}
-                    onChange={(e) => setUsarPrecioManual(e.target.checked)}
-                  />
-                  Cargar precio manual (descuento puntual / acuerdo particular)
-                </label>
               )}
-              {usarPrecioManual && (
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="input-chunky"
-                  placeholder="Precio unitario manual"
-                  value={precioManual}
-                  onChange={(e) => setPrecioManual(e.target.value)}
+            </Campo>
+
+            {consultaValida && (
+              <CajaPrecio
+                cargando={cargandoPrecio}
+                preview={preview}
+                precioUnitario={precioUnitario}
+                editando={editandoPrecio}
+                onEditar={() => setEditandoPrecio(true)}
+                onFinEdicion={() => setEditandoPrecio(false)}
+                valorEditado={precioEditado}
+                onCambio={setPrecioEditado}
+              />
+            )}
+
+            <Navegacion onAtras={() => irA(1)} siguienteDeshabilitado={!puedeAvanzarPaso2} />
+          </form>
+        )}
+
+        {paso === 3 && (
+          <form
+            className="flex flex-col gap-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (puedeAvanzarPaso3) irA(4);
+            }}
+          >
+            <Encabezado titulo="Evento y fecha" subtitulo="Opcional agrupar por evento" />
+
+            <Campo label="Fecha" required>
+              <input
+                type="date"
+                className="input-chunky w-44"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                required
+              />
+            </Campo>
+
+            <Campo
+              label="Evento"
+              insignia={eventoCreado ? { texto: "Creado recién", tono: "rosa" } : undefined}
+            >
+              <SelectorConAlta
+                value={eventoId}
+                opciones={opcionesEventos}
+                onChange={(id) => {
+                  setEventoId(id);
+                  setEventoCreado(false);
+                }}
+                placeholder="Sin evento (opcional)"
+                vacioLabel="Sin evento (opcional)"
+                crearLabel="Crear evento nuevo"
+                onCrear={() => setModal("evento")}
+                tono="rosa"
+              />
+            </Campo>
+
+            <Campo label="Monto cobrado ahora">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                className="input-chunky w-40"
+                value={montoFinal}
+                onChange={(e) => setMontoInput(e.target.value)}
+              />
+              {!montoValido && (
+                <span className="text-xs font-bold text-rosa">
+                  El monto cobrado no puede superar el total ({formatMoney(precioTotal)}).
+                </span>
+              )}
+            </Campo>
+
+            <Navegacion onAtras={() => irA(2)} siguienteDeshabilitado={!puedeAvanzarPaso3} />
+          </form>
+        )}
+
+        {paso === 4 && (
+          <div className="flex flex-col gap-5">
+            <Encabezado titulo="Confirmar venta" subtitulo="Revisá antes de registrar" />
+
+            <dl className="rounded-xl border-2 border-navy px-4 py-3 flex flex-col gap-1.5 text-sm">
+              <FilaResumen
+                label="Tipo"
+                value={
+                  modo === "RAPIDA"
+                    ? "Venta rápida"
+                    : preview?.tipo === "DISTRIBUIDOR"
+                      ? "Distribuidor"
+                      : "Mayorista"
+                }
+              />
+              {modo === "MAYORISTA" && clienteSel && (
+                <FilaResumen
+                  label="Cliente"
+                  value={`${clienteSel.nombre} ${clienteSel.apellido}`.trim()}
                 />
               )}
-            </>
-          ) : (
-            <span className="text-sm font-semibold text-rosa">
-              No se pudo calcular un precio (¿hay una lista de precios activa?).
-            </span>
-          )}
-        </div>
-      )}
+              <FilaResumen label="Producto" value={`${productoSel?.nombre ?? "—"} x${cantidadNum}`} />
+              <FilaResumen label="Precio" value={formatMoney(precioTotal)} />
+              <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
+              {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
+              <FilaResumen label="Cobrado ahora" value={formatMoney(montoNum)} />
+            </dl>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Fecha" required>
-          <input
-            type="date"
-            className="input-chunky"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            required
-          />
-        </Field>
-        <Field label="Monto cobrado ahora">
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            className="input-chunky"
-            value={montoCobrado}
-            onChange={(e) => setMontoCobrado(e.target.value)}
-          />
-        </Field>
-      </div>
+            {error && (
+              <p className="text-sm font-bold text-rosa" role="alert">
+                {error}
+              </p>
+            )}
 
-      <div className="flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-xs font-bold">
-          <input
-            type="checkbox"
-            checked={entregaParcial}
-            onChange={(e) => {
-              setEntregaParcial(e.target.checked);
-              if (e.target.checked) setCantidadEntregada(cantidad);
-            }}
-          />
-          Entrega parcial (no se entrega toda la cantidad todavía)
-        </label>
-        {entregaParcial && (
-          <Field label="Cantidad entregada ahora">
-            <input
-              type="number"
-              min="0"
-              max={cantidad}
-              className="input-chunky"
-              value={cantidadEntregada}
-              onChange={(e) => setCantidadEntregada(e.target.value)}
-            />
-          </Field>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => irA(3)}
+                disabled={pending}
+                className="btn-secondary text-sm"
+              >
+                ← Atrás
+              </button>
+              <button type="button" onClick={registrar} disabled={pending} className="btn-primary">
+                {pending ? "Guardando..." : "✓ Registrar venta"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
-      <Field label="Descripción (opcional)">
-        <textarea
-          className="input-chunky resize-none"
-          rows={2}
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-        />
-      </Field>
-
-      {error && (
-        <p className="text-sm font-bold text-rosa" role="alert">
-          {error}
-        </p>
+      {modal === "cliente" && (
+        <ModalClienteRapido onCreado={handleClienteCreado} onClose={() => setModal(null)} />
       )}
-
-      <button type="submit" disabled={pending} className="btn-primary self-start">
-        {pending ? "Guardando..." : "Registrar venta"}
-      </button>
-    </form>
+      {modal === "evento" && (
+        <ModalEventoRapido
+          fechaInicial={fecha}
+          onCreado={handleEventoCreado}
+          onClose={() => setModal(null)}
+        />
+      )}
+    </>
   );
 }
 
-function Field({
+function Stepper({ paso }: { paso: number }) {
+  return (
+    <ol className="flex items-center gap-1.5" aria-label={`Paso ${paso} de ${TOTAL_PASOS}`}>
+      {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map((n) => (
+        <li
+          key={n}
+          className="flex items-center gap-1.5"
+          aria-current={n === paso ? "step" : undefined}
+        >
+          {n > 1 && <span aria-hidden className="w-4 h-0.5 bg-navy/25" />}
+          <span
+            className={`grid place-items-center size-7 rounded-full border-2 text-xs font-black ${
+              n === paso ? "bg-amarillo border-navy text-navy" : "border-navy/30 text-navy/50"
+            }`}
+          >
+            {n}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function Encabezado({ titulo, subtitulo }: { titulo: string; subtitulo: string }) {
+  return (
+    <div>
+      <h2 className="text-xl font-black">{titulo}</h2>
+      <p className="text-sm text-navy/60 mt-0.5">{subtitulo}</p>
+    </div>
+  );
+}
+
+function OpcionTipo({
+  activo,
+  onClick,
+  icono,
+  titulo,
+  detalle,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  icono: React.ReactNode;
+  titulo: string;
+  detalle: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={activo}
+      onClick={onClick}
+      className={`flex items-center gap-3 text-left rounded-xl border-navy px-3.5 py-2.5 ${
+        activo ? "bg-amarillo border-[3px]" : "bg-tarjeta border-2"
+      }`}
+    >
+      <span className="shrink-0">{icono}</span>
+      <span>
+        <span className="block font-extrabold text-sm">{titulo}</span>
+        <span className="block text-xs text-navy/60">{detalle}</span>
+      </span>
+    </button>
+  );
+}
+
+function Campo({
   label,
   required,
+  insignia,
   children,
 }: {
   label: string;
   required?: boolean;
+  insignia?: { texto: string; tono: "amarillo" | "rosa" };
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-extrabold uppercase tracking-wide text-navy/70">
-        {label}
-        {required && <span className="text-rosa"> *</span>}
-      </span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-extrabold uppercase tracking-wide text-navy/70">
+          {label}
+          {required && <span className="text-rosa"> *</span>}
+        </span>
+        {insignia && (
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+              insignia.tono === "rosa" ? "bg-rosa text-white" : "bg-amarillo text-navy"
+            }`}
+          >
+            ✓ {insignia.texto}
+          </span>
+        )}
+      </div>
       {children}
-    </label>
+    </div>
+  );
+}
+
+function CajaPrecio({
+  cargando,
+  preview,
+  precioUnitario,
+  editando,
+  onEditar,
+  onFinEdicion,
+  valorEditado,
+  onCambio,
+}: {
+  cargando: boolean;
+  preview: PrevisualizacionPrecio;
+  precioUnitario: number;
+  editando: boolean;
+  onEditar: () => void;
+  onFinEdicion: () => void;
+  valorEditado: string | null;
+  onCambio: (v: string) => void;
+}) {
+  if (cargando) {
+    return (
+      <div className="rounded-xl bg-navy/10 px-4 py-3 text-sm font-semibold">
+        Calculando precio...
+      </div>
+    );
+  }
+  if (!preview) {
+    return (
+      <div className="rounded-xl border-2 border-rosa bg-rosa/10 px-4 py-3 text-sm font-semibold text-rosa">
+        No se pudo calcular un precio (¿hay una lista de precios activa?).
+      </div>
+    );
+  }
+
+  const modoPrecio = preview.editable ? "EDITABLE" : "FIJO";
+  const etiqueta =
+    preview.origen === "PVP"
+      ? `PVP MINORISTA — ${modoPrecio}`
+      : preview.origen === "PARTICULAR"
+        ? `PRECIO PARTICULAR — ${modoPrecio}`
+        : `TRAMO ${preview.tramoDesde} UN.${preview.tipo === "DISTRIBUIDOR" ? " −20%" : ""} — ${modoPrecio}`;
+
+  return (
+    <div
+      className={`rounded-xl px-4 py-3 ${preview.origen === "PVP" ? "bg-amarillo/25" : "bg-navy/15"}`}
+    >
+      <div className="text-[10px] font-extrabold uppercase tracking-wide text-navy/60">
+        {etiqueta}
+      </div>
+      <div className="mt-1 flex items-baseline gap-1.5">
+        {preview.editable && editando ? (
+          <span className="flex items-baseline">
+            <span className="text-2xl font-black">$</span>
+            <input
+              autoFocus
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              aria-label="Precio unitario"
+              value={valorEditado ?? String(precioUnitario)}
+              onChange={(e) => onCambio(e.target.value)}
+              onBlur={onFinEdicion}
+              className="w-32 bg-transparent text-2xl font-black outline-none border-b-2 border-navy"
+            />
+          </span>
+        ) : preview.editable ? (
+          <button
+            type="button"
+            onClick={onEditar}
+            aria-label="Editar precio unitario"
+            className="text-2xl font-black border-b-2 border-dashed border-navy/40 hover:border-navy"
+          >
+            {formatMoney(precioUnitario)}
+          </button>
+        ) : (
+          <span className="text-2xl font-black">{formatMoney(precioUnitario)}</span>
+        )}
+        <span className="text-sm font-semibold text-navy/55">c/u</span>
+      </div>
+    </div>
+  );
+}
+
+function Navegacion({
+  onAtras,
+  siguienteDeshabilitado,
+}: {
+  onAtras: () => void;
+  siguienteDeshabilitado: boolean;
+}) {
+  return (
+    <div className="flex gap-2.5">
+      <button type="button" onClick={onAtras} className="btn-secondary text-sm">
+        ← Atrás
+      </button>
+      <button type="submit" disabled={siguienteDeshabilitado} className="btn-primary">
+        Siguiente →
+      </button>
+    </div>
+  );
+}
+
+function FilaResumen({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-xs text-navy/55">{label}</dt>
+      <dd className="font-extrabold text-right">{value}</dd>
+    </div>
+  );
+}
+
+function IconoRayo() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />
+    </svg>
+  );
+}
+
+function IconoLocal() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M4 10v10h16V10" />
+      <path d="M3 10 5 4h14l2 6c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3c0 1.7-1.3 3-3 3s-3-1.3-3-3Z" />
+    </svg>
   );
 }

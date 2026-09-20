@@ -36,6 +36,8 @@ export async function getListaActiva() {
 type SugerenciaPrecio = {
   listaId: string;
   tramoId: string | null;
+  // cantidad_desde del tramo aplicado (null si no hubo tramo: PVP o precio particular)
+  tramoDesde: number | null;
   precioUnitario: Prisma.Decimal;
   precioTotal: Prisma.Decimal;
 };
@@ -64,6 +66,7 @@ export async function sugerirPrecio(params: {
     return {
       listaId: lista.id,
       tramoId: null,
+      tramoDesde: null,
       precioUnitario: lista.pvp,
       precioTotal: lista.pvp.mul(cantidad),
     };
@@ -74,6 +77,7 @@ export async function sugerirPrecio(params: {
       return {
         listaId: lista.id,
         tramoId: null,
+        tramoDesde: null,
         precioUnitario: clientePrecioParticular,
         precioTotal: clientePrecioParticular.mul(cantidad),
       };
@@ -87,6 +91,7 @@ export async function sugerirPrecio(params: {
     return {
       listaId: lista.id,
       tramoId: tramo.id,
+      tramoDesde: tramo.cantidadDesde,
       precioUnitario: tramo.precioUnitario,
       precioTotal: tramo.precioUnitario.mul(cantidad),
     };
@@ -103,6 +108,7 @@ export async function sugerirPrecio(params: {
     return {
       listaId: lista.id,
       tramoId: tramo.id,
+      tramoDesde: tramo.cantidadDesde,
       precioUnitario,
       precioTotal: precioUnitario.mul(cantidad),
     };

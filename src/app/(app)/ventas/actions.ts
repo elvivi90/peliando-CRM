@@ -18,7 +18,10 @@ export async function crearVenta(input: VentaInput) {
 
   const usuario = await getCurrentUsuario();
 
-  const cliente = await prisma.cliente.findUniqueOrThrow({ where: { id: data.clienteId } });
+  // Sin cliente = venta rapida: minorista al PVP de la lista activa.
+  const cliente = data.clienteId
+    ? await prisma.cliente.findUniqueOrThrow({ where: { id: data.clienteId } })
+    : null;
 
   const producto = await prisma.producto.findUniqueOrThrow({ where: { id: data.productoId } });
   if (producto.stockActual < data.cantidad) {
@@ -27,15 +30,15 @@ export async function crearVenta(input: VentaInput) {
     );
   }
 
-  const tipo = cliente.tipo as TipoVenta;
+  const tipo: TipoVenta = cliente ? cliente.tipo : "MINORISTA";
 
   let sugerencia;
   try {
     sugerencia = await sugerirPrecio({
       tipo,
       cantidad: data.cantidad,
-      clientePrecioParticular: cliente.precioParticular,
-      clienteListaPrecioId: cliente.listaPrecioId,
+      clientePrecioParticular: cliente?.precioParticular,
+      clienteListaPrecioId: cliente?.listaPrecioId,
     });
   } catch (err) {
     if (err instanceof PricingError) throw new Error(err.message);
@@ -57,7 +60,7 @@ export async function crearVenta(input: VentaInput) {
   const venta = await prisma.$transaction(async (tx) => {
     const nuevaVenta = await tx.venta.create({
       data: {
-        clienteId: data.clienteId,
+        clienteId: data.clienteId ?? null,
         productoId: data.productoId,
         usuarioId: usuario.id,
         eventoId: data.eventoId ?? null,
@@ -95,28 +98,46 @@ export async function crearVenta(input: VentaInput) {
 
   revalidatePath("/ventas");
   revalidatePath("/dashboard");
-  revalidatePath(`/clientes/${data.clienteId}`);
+  if (data.clienteId) revalidatePath(`/clientes/${data.clienteId}`);
   redirect(`/ventas/${venta.id}`);
 }
 
-export async function previsualizarPrecio(clienteId: string, cantidad: number) {
-  if (!clienteId || !cantidad || cantidad <= 0) return null;
+export type PrevisualizacionPrecio = {
+  tipo: TipoVenta;
+  precioUnitario: number;
+  precioTotal: number;
+  editable: boolean;
+  // Que muestra la caja de precio: "PVP MINORISTA", "TRAMO 10 UN.", "PRECIO PARTICULAR"
+  origen: "PVP" | "TRAMO" | "PARTICULAR";
+  tramoDesde: number | null;
+} | null;
 
-  const cliente = await prisma.cliente.findUnique({ where: { id: clienteId } });
-  if (!cliente) return null;
+// clienteId vacio = venta rapida (minorista sin cliente).
+export async function previsualizarPrecio(
+  clienteId: string | null,
+  cantidad: number,
+): Promise<PrevisualizacionPrecio> {
+  if (!cantidad || cantidad <= 0) return null;
+
+  const cliente = clienteId ? await prisma.cliente.findUnique({ where: { id: clienteId } }) : null;
+  if (clienteId && !cliente) return null;
+  const tipo: TipoVenta = cliente ? cliente.tipo : "MINORISTA";
 
   try {
     const sugerencia = await sugerirPrecio({
-      tipo: cliente.tipo as TipoVenta,
+      tipo,
       cantidad,
-      clientePrecioParticular: cliente.precioParticular,
-      clienteListaPrecioId: cliente.listaPrecioId,
+      clientePrecioParticular: cliente?.precioParticular,
+      clienteListaPrecioId: cliente?.listaPrecioId,
     });
     return {
-      tipo: cliente.tipo,
+      tipo,
       precioUnitario: sugerencia.precioUnitario.toNumber(),
       precioTotal: sugerencia.precioTotal.toNumber(),
-      editable: cliente.tipo !== "DISTRIBUIDOR",
+      editable: tipo !== "DISTRIBUIDOR",
+      origen:
+        tipo === "MINORISTA" ? "PVP" : sugerencia.tramoDesde === null ? "PARTICULAR" : "TRAMO",
+      tramoDesde: sugerencia.tramoDesde,
     };
   } catch {
     return null;

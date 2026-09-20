@@ -6,7 +6,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 export default async function NuevaVentaPage() {
   const [clientes, productos, eventos, listaActiva] = await Promise.all([
+    // Solo los que se pueden elegir en el flujo mayorista/distribuidor.
     prisma.cliente.findMany({
+      where: { tipo: { in: ["MAYORISTA", "DISTRIBUIDOR"] } },
       orderBy: [{ apellido: "asc" }, { nombre: "asc" }],
       select: { id: true, nombre: true, apellido: true, tipo: true },
     }),
@@ -35,11 +37,6 @@ export default async function NuevaVentaPage() {
         <EmptyState
           title="No hay productos cargados"
           subtitle="Necesitás al menos un producto para poder registrar ventas."
-        />
-      ) : clientes.length === 0 ? (
-        <EmptyState
-          title="No hay clientes cargados"
-          subtitle="Creá un cliente antes de registrar la primera venta."
         />
       ) : (
         <VentaForm

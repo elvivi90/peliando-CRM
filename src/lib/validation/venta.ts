@@ -2,7 +2,11 @@ import { z } from "zod";
 import { parseFechaInput } from "@/lib/date";
 
 export const ventaSchema = z.object({
-  clienteId: z.string().min(1, "Elegí un cliente"),
+  // Vacio = venta rapida (minorista sin cliente)
+  clienteId: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() !== "" ? v : undefined)),
   productoId: z.string().min(1, "Elegí un producto"),
   eventoId: z
     .string()

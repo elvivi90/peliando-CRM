@@ -26,3 +26,20 @@ export async function crearEvento(input: { nombre: string; fecha: string; lugar:
   revalidatePath("/eventos");
   redirect(`/eventos/${evento.id}`);
 }
+
+// Alta desde el modal de Nueva venta: devuelve el evento sin redirigir.
+export async function crearEventoRapido(input: { nombre: string; fecha: string; lugar: string }) {
+  const data = eventoSchema.parse(input);
+
+  const evento = await prisma.evento.create({
+    data: {
+      nombre: data.nombre,
+      fecha: parseFechaInput(data.fecha),
+      lugar: data.lugar || null,
+    },
+    select: { id: true, nombre: true },
+  });
+
+  revalidatePath("/eventos");
+  return evento;
+}

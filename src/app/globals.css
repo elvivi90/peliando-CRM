@@ -7,6 +7,7 @@
   --color-amarillo: #f9bd16;
   --color-rosa: #c9579a;
   --color-azul: #1a66aa;
+  --color-modal: #e2d3bf;
 }
 
 @theme inline {
@@ -16,6 +17,7 @@
   --color-amarillo: var(--color-amarillo);
   --color-rosa: var(--color-rosa);
   --color-azul: var(--color-azul);
+  --color-modal: var(--color-modal);
   --font-sans: var(--font-inter);
 }
 

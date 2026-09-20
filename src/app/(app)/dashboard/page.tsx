@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/ui/stat-card";
 import { VentasChart } from "@/components/dashboard/ventas-chart";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, nombreCliente } from "@/lib/format";
 import { getResumenMes } from "@/lib/services/reportes";
 import { resumenCuentasCorrientesPendientes } from "@/lib/services/cuenta-corriente";
 
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
                     <TipoDot tipo={v.tipo} />
                     <div className="min-w-0">
                       <div className="text-sm font-extrabold truncate">
-                        {v.cliente.nombre} {v.cliente.apellido}
+                        {nombreCliente(v.cliente)}
                       </div>
                       <div className="text-xs text-navy/55">
                         <TipoBadgeInline tipo={v.tipo} /> · {v.cantidad} un.

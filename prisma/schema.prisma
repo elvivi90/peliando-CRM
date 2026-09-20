@@ -158,8 +158,9 @@ model Evento {
 
 model Venta {
   id         String    @id @default(uuid())
-  clienteId  String
-  cliente    Cliente   @relation(fields: [clienteId], references: [id])
+  // Null en la "venta rapida" (minorista sin cliente, ideal para eventos).
+  clienteId  String?
+  cliente    Cliente?  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   productoId String
   producto   Producto  @relation(fields: [productoId], references: [id])
   usuarioId  String

@@ -30,12 +30,15 @@ export async function resumenCuentasCorrientesPendientes() {
     include: { cliente: true },
   });
 
+  type ClienteConVentas = NonNullable<(typeof ventas)[number]["cliente"]>;
   const porCliente = new Map<
     string,
-    { cliente: (typeof ventas)[number]["cliente"]; cantidadPendiente: number; saldoPendiente: Prisma.Decimal }
+    { cliente: ClienteConVentas; cantidadPendiente: number; saldoPendiente: Prisma.Decimal }
   >();
 
   for (const v of ventas) {
+    // Las ventas rapidas (sin cliente) no tienen cuenta corriente.
+    if (!v.clienteId || !v.cliente) continue;
     const actual = porCliente.get(v.clienteId) ?? {
       cliente: v.cliente,
       cantidadPendiente: 0,

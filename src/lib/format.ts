@@ -26,3 +26,8 @@ export function toNumber(value: Prisma.Decimal | number | string | null | undefi
   if (value === null || value === undefined) return 0;
   return Number(value);
 }
+
+// Las ventas rapidas no tienen cliente.
+export function nombreCliente(cliente: { nombre: string; apellido: string } | null | undefined) {
+  return cliente ? `${cliente.nombre} ${cliente.apellido}`.trim() : "Venta rápida";
+}

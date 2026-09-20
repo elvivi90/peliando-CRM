@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { Prisma } from "@prisma/client";
 
 export default async function EventoDetailPage({
@@ -62,7 +62,7 @@ export default async function EventoDetailPage({
                 {evento.ventas.map((v) => (
                   <tr key={v.id} className="border-b border-navy/10 last:border-0">
                     <td className="px-5 py-2.5 font-semibold">
-                      {v.cliente.nombre} {v.cliente.apellido}
+                      {nombreCliente(v.cliente)}
                     </td>
                     <td className="px-5 py-2.5">
                       <TipoBadge tipo={v.tipo} />

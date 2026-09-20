@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import type { TipoVenta } from "@prisma/client";
 
 const TIPOS: { value: TipoVenta | ""; label: string }[] = [
@@ -90,7 +90,7 @@ export default async function VentasPage({
                     <td className="px-5 py-3 text-navy/70 whitespace-nowrap">{formatDate(v.fecha)}</td>
                     <td className="px-5 py-3">
                       <Link href={`/ventas/${v.id}`} className="font-bold hover:underline">
-                        {v.cliente.nombre} {v.cliente.apellido}
+                        {nombreCliente(v.cliente)}
                       </Link>
                     </td>
                     <td className="px-5 py-3">

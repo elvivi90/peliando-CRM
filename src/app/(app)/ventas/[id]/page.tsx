@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 
 export default async function VentaDetailPage({
@@ -30,7 +30,7 @@ export default async function VentaDetailPage({
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <PageHeader
-        title={`Venta a ${venta.cliente.nombre} ${venta.cliente.apellido}`}
+        title={venta.cliente ? `Venta a ${nombreCliente(venta.cliente)}` : "Venta rápida"}
         subtitle={formatDate(venta.fecha)}
         action={<TipoBadge tipo={venta.tipo} />}
       />
@@ -40,9 +40,13 @@ export default async function VentaDetailPage({
         <Info
           label="Cliente"
           value={
-            <Link href={`/clientes/${venta.clienteId}`} className="hover:underline">
-              {venta.cliente.nombre} {venta.cliente.apellido}
-            </Link>
+            venta.cliente ? (
+              <Link href={`/clientes/${venta.clienteId}`} className="hover:underline">
+                {nombreCliente(venta.cliente)}
+              </Link>
+            ) : (
+              "Sin cliente"
+            )
           }
         />
         <Info label="Cantidad" value={String(venta.cantidad)} />
