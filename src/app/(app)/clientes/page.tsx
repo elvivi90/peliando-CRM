@@ -10,7 +10,6 @@ const TIPOS: { value: TipoCliente | ""; label: string }[] = [
   { value: "MINORISTA", label: "Minorista" },
   { value: "MAYORISTA", label: "Mayorista" },
   { value: "DISTRIBUIDOR", label: "Distribuidor" },
-  { value: "CONCESION", label: "Concesión" },
 ];
 
 export default async function ClientesPage({

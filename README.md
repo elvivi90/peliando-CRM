@@ -2,8 +2,8 @@
 
 CRM interno para llevar la contabilidad de ventas de Peliando (juego de mesa
 de debate sobre películas): clientes, lista de precios versionada, ventas
-(minorista, mayorista, distribuidor y concesión), cuenta corriente, eventos,
-gastos y reportes mensuales. Ver `docs/Especificaciones — CRM Peliando.docx`
+(minorista, mayorista y distribuidor), concesiones a mayoristas, cuenta
+corriente, eventos, gastos y reportes mensuales. Ver `docs/Especificaciones — CRM Peliando.docx`
 para la especificación completa.
 
 Next.js (App Router) + Prisma + PostgreSQL/Auth vía Supabase, pensado como
@@ -73,6 +73,12 @@ y de ahí a `/dashboard` una vez autenticado.
   `saldo_pendiente_cobro` es `precioTotal - montoCobrado` sumado por
   cliente. Evita una entidad `Pago` que la especificación no pedía y
   mantiene todo consistente con un único registro de verdad.
+- **Concesión no es un tipo de cliente** (`TipoCliente` solo tiene minorista,
+  mayorista y distribuidor): es una modalidad de entrega que se crea
+  únicamente desde la ficha de un cliente mayorista — no aparece en Nueva
+  Venta ni aplica a minoristas o distribuidores. La mercadería entregada sale
+  del stock general pero no es venta hasta que se registra una liquidación;
+  una devolución resta de lo entregado y vuelve al stock del producto.
 - **`Venta.tipo`** incluye `CONCESION` además de minorista/mayorista/
   distribuidor: cuando se liquida una concesión (sección 4.3) se genera una
   Venta real retroactiva, y necesita un tipo propio para no mezclarse con

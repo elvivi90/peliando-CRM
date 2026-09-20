@@ -6,6 +6,7 @@ import { TipoBadge } from "@/components/ui/badge";
 import { Comentarios } from "@/components/clientes/comentarios";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getCuentaCorriente } from "@/lib/services/cuenta-corriente";
+import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
 
 export default async function ClienteDetailPage({
   params,
@@ -34,6 +35,9 @@ export default async function ClienteDetailPage({
     take: 20,
     include: { producto: true },
   });
+
+  const esMayorista = cliente.tipo === "MAYORISTA";
+  const productos = esMayorista ? await prisma.producto.findMany({ orderBy: { nombre: "asc" } }) : [];
 
   const tieneCuentaCorriente = cliente.tipo === "MAYORISTA" || cliente.tipo === "DISTRIBUIDOR";
   const cuentaCorriente = tieneCuentaCorriente ? await getCuentaCorriente(id) : null;
@@ -98,7 +102,7 @@ export default async function ClienteDetailPage({
             </div>
           )}
 
-          {cliente.tipo === "CONCESION" && (
+          {esMayorista && (
             <div className="card-chunky p-5">
               <h2 className="font-extrabold text-sm uppercase tracking-wide text-navy/60 mb-4">
                 Concesión
@@ -126,9 +130,14 @@ export default async function ClienteDetailPage({
                   })}
                 </ul>
               )}
-              <Link href="/concesion" className="btn-secondary text-sm mt-4 inline-flex">
-                Gestionar concesión
-              </Link>
+              <div className="flex flex-wrap items-start gap-3">
+                <NuevaEntregaForm clienteId={id} productos={productos} />
+                {cliente.concesiones.length > 0 && (
+                  <Link href="/concesion" className="btn-secondary text-sm mt-4 inline-flex">
+                    Liquidar / devolver
+                  </Link>
+                )}
+              </div>
             </div>
           )}
 

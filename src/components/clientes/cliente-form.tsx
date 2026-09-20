@@ -11,7 +11,7 @@ type ClienteFormValues = {
   email: string;
   telefono: string;
   direccion: string;
-  tipo: "MINORISTA" | "MAYORISTA" | "DISTRIBUIDOR" | "CONCESION";
+  tipo: "MINORISTA" | "MAYORISTA" | "DISTRIBUIDOR";
   precioParticular: string;
   listaPrecioId: string;
 };
@@ -20,7 +20,6 @@ const TIPOS = [
   { value: "MINORISTA", label: "Minorista" },
   { value: "MAYORISTA", label: "Mayorista" },
   { value: "DISTRIBUIDOR", label: "Distribuidor" },
-  { value: "CONCESION", label: "Concesión" },
 ] as const;
 
 export function ClienteForm({

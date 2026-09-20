@@ -42,10 +42,8 @@ export function VentaForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
-  const esConcesion = clienteSeleccionado?.tipo === "CONCESION";
   const cantidadNum = Number(cantidad) || 0;
-  const consultaValida = Boolean(clienteId) && !esConcesion && cantidadNum > 0;
+  const consultaValida = Boolean(clienteId) && cantidadNum > 0;
   const preview = consultaValida ? fetchedPreview : null;
   const cantidadEntregadaFinal = entregaParcial ? cantidadEntregada : cantidad;
 
@@ -77,13 +75,6 @@ export function VentaForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-
-    if (esConcesion) {
-      setError(
-        "Este cliente es de tipo Concesión. Cargá la entrega y liquidación desde la sección Concesión.",
-      );
-      return;
-    }
 
     startTransition(async () => {
       try {
@@ -141,13 +132,6 @@ export function VentaForm({
         </Field>
       </div>
 
-      {esConcesion && (
-        <p className="text-sm bg-rosa/15 border-2 border-rosa rounded-xl px-4 py-3 font-semibold text-rosa">
-          Este cliente es de tipo Concesión: gestioná entrega y liquidación desde la sección
-          Concesión, no desde acá.
-        </p>
-      )}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Cantidad" required>
           <input
@@ -175,7 +159,7 @@ export function VentaForm({
         </Field>
       </div>
 
-      {clienteId && !esConcesion && (
+      {clienteId && (
         <div className="rounded-xl border-2 border-navy bg-amarillo/15 px-4 py-3.5 flex flex-col gap-2">
           {previewLoading ? (
             <span className="text-sm font-semibold">Calculando precio...</span>
@@ -287,7 +271,7 @@ export function VentaForm({
         </p>
       )}
 
-      <button type="submit" disabled={pending || esConcesion} className="btn-primary self-start">
+      <button type="submit" disabled={pending} className="btn-primary self-start">
         {pending ? "Guardando..." : "Registrar venta"}
       </button>
     </form>

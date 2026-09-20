@@ -1,32 +1,20 @@
-import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
 import { ConcesionCard } from "@/components/concesion/concesion-card";
 import { getConcesionesConSaldo } from "@/lib/services/concesion";
 
 export default async function ConcesionPage() {
-  const [clientesConcesion, productos, concesiones] = await Promise.all([
-    prisma.cliente.findMany({
-      where: { tipo: "CONCESION" },
-      select: { id: true, nombre: true, apellido: true },
-      orderBy: { apellido: "asc" },
-    }),
-    prisma.producto.findMany({ orderBy: { nombre: "asc" } }),
-    getConcesionesConSaldo(),
-  ]);
+  const concesiones = await getConcesionesConSaldo();
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Concesión"
-        subtitle="El local recibe mercadería sin que sea venta todavía; se liquida cuando avisa cuánto vendió."
+        subtitle="Mercadería entregada a mayoristas sin que sea venta todavía; se liquida cuando avisan cuánto vendieron. Las entregas nuevas se cargan desde la ficha del cliente mayorista."
       />
 
-      <NuevaEntregaForm clientesConcesion={clientesConcesion} productos={productos} />
-
       {concesiones.length === 0 ? (
-        <EmptyState title="Todavía no hay entregas en concesión" />
+        <EmptyState title="Todavía no hay entregas en concesión" subtitle="Se crean desde la ficha de un cliente mayorista." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {concesiones.map((c) => (

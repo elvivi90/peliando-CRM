@@ -20,12 +20,6 @@ export async function crearVenta(input: VentaInput) {
 
   const cliente = await prisma.cliente.findUniqueOrThrow({ where: { id: data.clienteId } });
 
-  if (cliente.tipo === "CONCESION") {
-    throw new Error(
-      "Este cliente es de tipo Concesión: las ventas se generan liquidando la concesión, no cargando una venta manual.",
-    );
-  }
-
   const producto = await prisma.producto.findUniqueOrThrow({ where: { id: data.productoId } });
   if (producto.stockActual < data.cantidad) {
     throw new Error(
@@ -109,7 +103,7 @@ export async function previsualizarPrecio(clienteId: string, cantidad: number) {
   if (!clienteId || !cantidad || cantidad <= 0) return null;
 
   const cliente = await prisma.cliente.findUnique({ where: { id: clienteId } });
-  if (!cliente || cliente.tipo === "CONCESION") return null;
+  if (!cliente) return null;
 
   try {
     const sugerencia = await sugerirPrecio({

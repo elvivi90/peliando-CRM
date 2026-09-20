@@ -6,7 +6,7 @@ export const clienteSchema = z.object({
   email: z.string().trim().email("Email inválido").optional().or(z.literal("")),
   telefono: z.string().trim().optional().or(z.literal("")),
   direccion: z.string().trim().optional().or(z.literal("")),
-  tipo: z.enum(["MINORISTA", "MAYORISTA", "DISTRIBUIDOR", "CONCESION"]),
+  tipo: z.enum(["MINORISTA", "MAYORISTA", "DISTRIBUIDOR"]),
   precioParticular: z
     .string()
     .optional()

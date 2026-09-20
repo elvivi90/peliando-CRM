@@ -13,11 +13,12 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// Concesion NO es un tipo de cliente: es una modalidad de entrega/venta que
+// se crea solo desde la ficha de un cliente MAYORISTA (ver Concesion).
 enum TipoCliente {
   MINORISTA
   MAYORISTA
   DISTRIBUIDOR
-  CONCESION
 }
 
 enum EstadoLista {
@@ -206,7 +207,10 @@ model Entrega {
   @@map("entregas")
 }
 
-// El local recibe mercaderia sin que sea venta todavia (prestamo de stock).
+// El cliente mayorista recibe mercaderia sin que sea venta todavia: sale del
+// stock general en la entrega, pero recien se vuelve Venta al liquidar.
+// Una devolucion resta de lo entregado y vuelve al stock del Producto.
+// Solo se crea desde la ficha de un cliente MAYORISTA.
 model Concesion {
   id                String   @id @default(uuid())
   clienteId         String
