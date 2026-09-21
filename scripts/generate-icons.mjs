@@ -5,11 +5,14 @@ import path from "path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(__dirname, "..", "public", "icons");
-const source = path.join(__dirname, "..", "public", "logo-peliando.png");
+// Mismo cuadro que usa el splash (ver scripts/generate-splash.py): asi el
+// splash nativo de Android (icono sobre background_color) y el de la app
+// muestran exactamente la misma imagen.
+const source = path.join(__dirname, "..", "public", "splash", "logo-splash.png");
 mkdirSync(outDir, { recursive: true });
 
-// El logo real ya es cuadrado con fondo propio (malva), asi que alcanza
-// con reescalarlo a cada tamano necesario.
+// La imagen ya es cuadrada con fondo propio (rosa del logo), asi que alcanza
+// con reescalarla a cada tamano necesario.
 for (const size of [192, 512]) {
   await sharp(source).resize(size, size).png().toFile(path.join(outDir, `icon-${size}.png`));
 }
@@ -26,7 +29,7 @@ await sharp(source)
     bottom: 51,
     left: 51,
     right: 51,
-    background: { r: 178, g: 131, b: 176, alpha: 1 }, // malva del logo (muestreado de la esquina)
+    background: { r: 191, g: 144, b: 172, alpha: 1 }, // rosa del logo (#bf90ac, igual a background_color del manifest)
   })
   .png()
   .toFile(path.join(outDir, "icon-maskable-512.png"));

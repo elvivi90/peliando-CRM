@@ -9,6 +9,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Baja el logo animado del indicador de carga en segundo plano, asi ya esta
+          en cache cuando aparece la primera pantalla de carga. */}
+      <link rel="prefetch" as="image" href="/splash/logo-cargando.webp" />
       <div className="franja-marca h-[5px] lg:hidden">
         <div className="bg-azul" />
         <div className="bg-rosa" />

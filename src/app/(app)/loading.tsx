@@ -1,21 +1,19 @@
-import Image from "next/image";
+import { Bone, SkeletonCard, SkeletonHeader, SkeletonRoot } from "@/components/ui/skeleton";
+import { CargandoOverlay } from "@/components/ui/cargando-overlay";
 
-// Indicador de carga de todas las pantallas de la app: la animacion del logo
-// (recortada y comprimida desde el GIF original, que pesaba 31 MB).
 export default function Loading() {
   return (
-    <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
-      <div className="size-36 overflow-hidden rounded-3xl border-[3px] border-navy bg-splash">
-        <Image
-          src="/splash/cargando.webp"
-          alt=""
-          width={360}
-          height={360}
-          unoptimized
-          className="size-full"
-        />
-      </div>
-      <span className="sr-only">Cargando...</span>
-    </div>
+    <>
+      <SkeletonRoot>
+        <SkeletonHeader subtitle />
+        <SkeletonCard className="flex flex-col gap-3">
+          <Bone className="h-4 w-40" />
+          <Bone className="h-4 w-full" />
+          <Bone className="h-4 w-3/4" />
+          <Bone className="h-32 rounded-xl" />
+        </SkeletonCard>
+      </SkeletonRoot>
+      <CargandoOverlay />
+    </>
   );
 }

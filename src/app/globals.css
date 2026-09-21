@@ -40,6 +40,30 @@ body {
   }
 }
 
+/* Seguro: si el JS no llega a hidratar (red lenta, chunks bloqueados), el
+   splash se va solo a los 5 s en vez de tapar la app para siempre. */
+@keyframes splash-seguro {
+  to {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+#splash-inicial {
+  animation: splash-seguro 0.4s ease 5s forwards;
+}
+
+/* Backdrop de carga: aparece con una pequena demora para que las
+   navegaciones rapidas no hagan parpadear la pantalla en negro. */
+@keyframes loading-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.loading-overlay {
+  animation: loading-fade-in 0.2s ease 0.12s both;
+}
+
 /* Utilidades "chunky" reusadas en todo el CRM: borde navy grueso,
    esquinas bien redondeadas, sin sombras suaves tipo SaaS generico. */
 @layer components {
