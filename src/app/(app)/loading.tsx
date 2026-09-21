@@ -1,21 +1,21 @@
+import Image from "next/image";
+
+// Indicador de carga de todas las pantallas de la app: la animacion del logo
+// (recortada y comprimida desde el GIF original, que pesaba 31 MB).
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-5 animate-pulse">
-      <div className="h-8 w-48 rounded-lg bg-navy/10" />
-
-      <div className="flex flex-wrap gap-4 lg:gap-5">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex-1 min-w-[150px] card-chunky overflow-hidden">
-            <div className="h-[7px] bg-navy/10" />
-            <div className="px-5 py-4 flex flex-col gap-2">
-              <div className="h-3 w-20 rounded bg-navy/10" />
-              <div className="h-7 w-24 rounded bg-navy/10" />
-            </div>
-          </div>
-        ))}
+    <div className="flex items-center justify-center py-24" role="status" aria-live="polite">
+      <div className="size-36 overflow-hidden rounded-3xl border-[3px] border-navy bg-splash">
+        <Image
+          src="/splash/cargando.webp"
+          alt=""
+          width={360}
+          height={360}
+          unoptimized
+          className="size-full"
+        />
       </div>
-
-      <div className="card-chunky h-64" />
+      <span className="sr-only">Cargando...</span>
     </div>
   );
 }
