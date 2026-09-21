@@ -11,6 +11,7 @@ import { parseFechaInput, todayInputValue } from "@/lib/date";
 import { SelectorConAlta } from "@/components/ventas/selector-con-alta";
 import { ModalClienteRapido, type ClienteCreado } from "@/components/ventas/modal-cliente-rapido";
 import { ModalEventoRapido, type EventoCreado } from "@/components/ventas/modal-evento-rapido";
+import { ModalTramos } from "@/components/ventas/modal-tramos";
 
 type Cliente = { id: string; nombre: string; apellido: string; tipo: string };
 type Producto = { id: string; nombre: string; stockActual: number };
@@ -43,6 +44,8 @@ export function VentaForm({
   // null = usar el precio sugerido; string = el usuario lo editó
   const [precioEditado, setPrecioEditado] = useState<string | null>(null);
   const [editandoPrecio, setEditandoPrecio] = useState(false);
+  // null = el tramo que corresponde a la cantidad; string = elegido a mano
+  const [tramoElegido, setTramoElegido] = useState<string | null>(null);
 
   const [fecha, setFecha] = useState(() => todayInputValue());
   const [eventoId, setEventoId] = useState("");
@@ -51,7 +54,7 @@ export function VentaForm({
 
   const [clienteCreado, setClienteCreado] = useState(false);
   const [eventoCreado, setEventoCreado] = useState(false);
-  const [modal, setModal] = useState<"cliente" | "evento" | null>(null);
+  const [modal, setModal] = useState<"cliente" | "evento" | "tramo" | null>(null);
 
   const [fetchedPreview, setFetchedPreview] = useState<PrevisualizacionPrecio>(null);
   const [cargandoPrecio, setCargandoPrecio] = useState(false);
@@ -68,7 +71,7 @@ export function VentaForm({
     let activo = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- flag de carga de un fetch legitimo
     setCargandoPrecio(true);
-    previsualizarPrecio(clienteConsulta || null, cantidadNum).then((res) => {
+    previsualizarPrecio(clienteConsulta || null, cantidadNum, tramoElegido).then((res) => {
       if (!activo) return;
       setFetchedPreview(res);
       setCargandoPrecio(false);
@@ -76,7 +79,7 @@ export function VentaForm({
     return () => {
       activo = false;
     };
-  }, [clienteConsulta, cantidadNum, consultaValida]);
+  }, [clienteConsulta, cantidadNum, consultaValida, tramoElegido]);
 
   const productoSel = productos.find((p) => p.id === productoId);
   const clienteSel = clientes.find((c) => c.id === clienteId);
@@ -112,23 +115,33 @@ export function VentaForm({
   function elegirModo(m: Modo) {
     setModo(m);
     setPrecioEditado(null);
+    setTramoElegido(null);
   }
 
   function handleCantidad(v: string) {
     setCantidad(v);
     setPrecioEditado(null);
+    setTramoElegido(null);
   }
 
   function handleCliente(id: string) {
     setClienteId(id);
     setClienteCreado(false);
     setPrecioEditado(null);
+    setTramoElegido(null);
   }
 
   function handleClienteCreado(c: ClienteCreado) {
     setClientes((prev) => [...prev, c]);
     setClienteId(c.id);
     setClienteCreado(true);
+    setPrecioEditado(null);
+    setTramoElegido(null);
+    setModal(null);
+  }
+
+  function handleTramoAplicado(id: string | null) {
+    setTramoElegido(id);
     setPrecioEditado(null);
     setModal(null);
   }
@@ -162,6 +175,7 @@ export function VentaForm({
           // se puede ajustar después desde el detalle de la venta.
           cantidadEntregada: cantidad,
           precioUnitarioManual: precioManual,
+          tramoId: tramoElegido ?? "",
           montoCobrado: montoFinal || "0",
           fecha,
         });
@@ -184,7 +198,7 @@ export function VentaForm({
 
   return (
     <>
-      <div className="card-chunky p-6 flex flex-col gap-5 max-w-md">
+      <div className="card-chunky p-6 flex flex-col gap-5 max-w-md mx-auto">
         <Stepper paso={paso} />
 
         {paso === 1 && (
@@ -305,6 +319,8 @@ export function VentaForm({
                 onFinEdicion={() => setEditandoPrecio(false)}
                 valorEditado={precioEditado}
                 onCambio={setPrecioEditado}
+                tramoElegido={tramoElegido !== null}
+                onCambiarTramo={() => setModal("tramo")}
               />
             )}
 
@@ -394,6 +410,12 @@ export function VentaForm({
                 />
               )}
               <FilaResumen label="Producto" value={`${productoSel?.nombre ?? "—"} x${cantidadNum}`} />
+              {preview?.origen === "TRAMO" && (
+                <FilaResumen
+                  label="Tramo"
+                  value={`Desde ${preview.tramoDesde} un.${tramoElegido !== null ? " (elegido)" : ""}`}
+                />
+              )}
               <FilaResumen label="Precio" value={formatMoney(precioTotal)} />
               <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
               {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
@@ -430,6 +452,18 @@ export function VentaForm({
         <ModalEventoRapido
           fechaInicial={fecha}
           onCreado={handleEventoCreado}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === "tramo" && preview && (
+        <ModalTramos
+          listaNombre={preview.listaNombre}
+          tramos={preview.tramos}
+          cantidad={cantidadNum}
+          tramoActualId={preview.tramoId}
+          tramoSugeridoId={preview.tramoSugeridoId}
+          esDistribuidor={preview.tipo === "DISTRIBUIDOR"}
+          onAplicar={handleTramoAplicado}
           onClose={() => setModal(null)}
         />
       )}
@@ -543,6 +577,8 @@ function CajaPrecio({
   onFinEdicion,
   valorEditado,
   onCambio,
+  tramoElegido,
+  onCambiarTramo,
 }: {
   cargando: boolean;
   preview: PrevisualizacionPrecio;
@@ -552,6 +588,9 @@ function CajaPrecio({
   onFinEdicion: () => void;
   valorEditado: string | null;
   onCambio: (v: string) => void;
+  // true si el tramo se eligio a mano (no es el que corresponde a la cantidad)
+  tramoElegido: boolean;
+  onCambiarTramo: () => void;
 }) {
   if (cargando) {
     return (
@@ -574,7 +613,7 @@ function CajaPrecio({
       ? `PVP MINORISTA — ${modoPrecio}`
       : preview.origen === "PARTICULAR"
         ? `PRECIO PARTICULAR — ${modoPrecio}`
-        : `TRAMO ${preview.tramoDesde} UN.${preview.tipo === "DISTRIBUIDOR" ? " −20%" : ""} — ${modoPrecio}`;
+        : `TRAMO ${preview.tramoDesde} UN.${preview.tipo === "DISTRIBUIDOR" ? " −20%" : ""}${tramoElegido ? " · ELEGIDO" : ""} — ${modoPrecio}`;
 
   return (
     <div
@@ -614,6 +653,15 @@ function CajaPrecio({
         )}
         <span className="text-sm font-semibold text-navy/55">c/u</span>
       </div>
+      {preview.origen === "TRAMO" && preview.tramos.length > 1 && (
+        <button
+          type="button"
+          onClick={onCambiarTramo}
+          className="mt-2.5 text-xs font-extrabold underline decoration-2"
+        >
+          {tramoElegido ? "Cambiar o restablecer tramo" : "Cambiar tramo"}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Prisma, TipoVenta } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-const DESCUENTO_DISTRIBUIDOR = 0.2;
+export const DESCUENTO_DISTRIBUIDOR = 0.2;
 
 export class PricingError extends Error {}
 
@@ -33,14 +33,30 @@ export async function getListaActiva() {
   return lista;
 }
 
+export type TramoLista = {
+  id: string;
+  cantidadDesde: number;
+  precioUnitario: Prisma.Decimal;
+};
+
 type SugerenciaPrecio = {
   listaId: string;
+  listaNombre: string;
+  // todos los tramos de la lista usada (para poder elegir otro a mano)
+  tramos: TramoLista[];
   tramoId: string | null;
   // cantidad_desde del tramo aplicado (null si no hubo tramo: PVP o precio particular)
   tramoDesde: number | null;
   precioUnitario: Prisma.Decimal;
   precioTotal: Prisma.Decimal;
 };
+
+/** Precio unitario que paga cada tipo por un tramo (el distribuidor paga tramo - 20%). */
+export function precioDeTramo(tipo: TipoVenta, tramo: { precioUnitario: Prisma.Decimal }) {
+  return tipo === "DISTRIBUIDOR"
+    ? tramo.precioUnitario.mul(1 - DESCUENTO_DISTRIBUIDOR)
+    : tramo.precioUnitario;
+}
 
 /**
  * Calcula el precio sugerido segun las reglas de la seccion 3.2. El
@@ -52,8 +68,11 @@ export async function sugerirPrecio(params: {
   cantidad: number;
   clientePrecioParticular?: Prisma.Decimal | null;
   clienteListaPrecioId?: string | null;
+  // Tramo elegido a mano (mayorista/distribuidor). Si no viene, se elige
+  // automaticamente el que corresponde a la cantidad.
+  tramoId?: string | null;
 }): Promise<SugerenciaPrecio> {
-  const { tipo, cantidad, clientePrecioParticular, clienteListaPrecioId } = params;
+  const { tipo, cantidad, clientePrecioParticular, clienteListaPrecioId, tramoId } = params;
 
   const lista = clienteListaPrecioId
     ? await prisma.listaDePrecios.findUniqueOrThrow({
@@ -62,9 +81,11 @@ export async function sugerirPrecio(params: {
       })
     : await getListaActiva();
 
+  const base = { listaId: lista.id, listaNombre: lista.nombre, tramos: lista.tramos };
+
   if (tipo === "MINORISTA") {
     return {
-      listaId: lista.id,
+      ...base,
       tramoId: null,
       tramoDesde: null,
       precioUnitario: lista.pvp,
@@ -72,41 +93,33 @@ export async function sugerirPrecio(params: {
     };
   }
 
-  if (tipo === "MAYORISTA") {
-    if (clientePrecioParticular) {
+  if (tipo === "MAYORISTA" || tipo === "DISTRIBUIDOR") {
+    // Un tramo elegido a mano tiene prioridad, incluso sobre el precio particular.
+    if (tipo === "MAYORISTA" && clientePrecioParticular && !tramoId) {
       return {
-        listaId: lista.id,
+        ...base,
         tramoId: null,
         tramoDesde: null,
         precioUnitario: clientePrecioParticular,
         precioTotal: clientePrecioParticular.mul(cantidad),
       };
     }
-    const tramo = elegirTramo(lista.tramos, cantidad);
-    if (!tramo) {
-      throw new PricingError(
-        `La cantidad (${cantidad}) es menor al primer tramo de la lista activa.`,
-      );
-    }
-    return {
-      listaId: lista.id,
-      tramoId: tramo.id,
-      tramoDesde: tramo.cantidadDesde,
-      precioUnitario: tramo.precioUnitario,
-      precioTotal: tramo.precioUnitario.mul(cantidad),
-    };
-  }
 
-  if (tipo === "DISTRIBUIDOR") {
-    const tramo = elegirTramo(lista.tramos, cantidad);
+    const tramo = tramoId
+      ? lista.tramos.find((t) => t.id === tramoId)
+      : elegirTramo(lista.tramos, cantidad);
+    if (tramoId && !tramo) {
+      throw new PricingError("El tramo elegido no pertenece a la lista de precios de este cliente.");
+    }
     if (!tramo) {
       throw new PricingError(
         `La cantidad (${cantidad}) es menor al primer tramo de la lista activa.`,
       );
     }
-    const precioUnitario = tramo.precioUnitario.mul(1 - DESCUENTO_DISTRIBUIDOR);
+
+    const precioUnitario = precioDeTramo(tipo, tramo);
     return {
-      listaId: lista.id,
+      ...base,
       tramoId: tramo.id,
       tramoDesde: tramo.cantidadDesde,
       precioUnitario,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario } from "@/lib/auth";
-import { sugerirPrecio, PricingError } from "@/lib/pricing";
+import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/pricing";
 import { parseFechaInput } from "@/lib/date";
 import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
 import type { TipoVenta } from "@prisma/client";
@@ -39,6 +39,7 @@ export async function crearVenta(input: VentaInput) {
       cantidad: data.cantidad,
       clientePrecioParticular: cliente?.precioParticular,
       clienteListaPrecioId: cliente?.listaPrecioId,
+      tramoId: data.tramoId,
     });
   } catch (err) {
     if (err instanceof PricingError) throw new Error(err.message);
@@ -110,12 +111,20 @@ export type PrevisualizacionPrecio = {
   // Que muestra la caja de precio: "PVP MINORISTA", "TRAMO 10 UN.", "PRECIO PARTICULAR"
   origen: "PVP" | "TRAMO" | "PARTICULAR";
   tramoDesde: number | null;
+  // Tramo aplicado, el que corresponde a la cantidad (automatico) y la lista
+  // completa con el precio que pagaria este cliente en cada uno.
+  tramoId: string | null;
+  tramoSugeridoId: string | null;
+  listaNombre: string;
+  tramos: { id: string; cantidadDesde: number; precioUnitario: number }[];
 } | null;
 
-// clienteId vacio = venta rapida (minorista sin cliente).
+// clienteId vacio = venta rapida (minorista sin cliente). tramoId fuerza un
+// tramo distinto al que corresponde a la cantidad.
 export async function previsualizarPrecio(
   clienteId: string | null,
   cantidad: number,
+  tramoId?: string | null,
 ): Promise<PrevisualizacionPrecio> {
   if (!cantidad || cantidad <= 0) return null;
 
@@ -129,7 +138,9 @@ export async function previsualizarPrecio(
       cantidad,
       clientePrecioParticular: cliente?.precioParticular,
       clienteListaPrecioId: cliente?.listaPrecioId,
+      tramoId,
     });
+    const conTramos = tipo !== "MINORISTA";
     return {
       tipo,
       precioUnitario: sugerencia.precioUnitario.toNumber(),
@@ -138,6 +149,16 @@ export async function previsualizarPrecio(
       origen:
         tipo === "MINORISTA" ? "PVP" : sugerencia.tramoDesde === null ? "PARTICULAR" : "TRAMO",
       tramoDesde: sugerencia.tramoDesde,
+      tramoId: sugerencia.tramoId,
+      tramoSugeridoId: conTramos ? (elegirTramo(sugerencia.tramos, cantidad)?.id ?? null) : null,
+      listaNombre: sugerencia.listaNombre,
+      tramos: conTramos
+        ? sugerencia.tramos.map((t) => ({
+            id: t.id,
+            cantidadDesde: t.cantidadDesde,
+            precioUnitario: precioDeTramo(tipo, t).toNumber(),
+          }))
+        : [],
     };
   } catch {
     return null;

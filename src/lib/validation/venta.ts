@@ -8,6 +8,11 @@ export const ventaSchema = z.object({
     .optional()
     .transform((v) => (v && v.trim() !== "" ? v : undefined)),
   productoId: z.string().min(1, "Elegí un producto"),
+  // Tramo de la lista elegido a mano (vacio = el que corresponde a la cantidad)
+  tramoId: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() !== "" ? v : undefined)),
   eventoId: z
     .string()
     .optional()
