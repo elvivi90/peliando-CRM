@@ -21,6 +21,14 @@ import { prisma } from "@/lib/prisma";
  *   en su forma exacta, solo se usa para sacar el id de la orden; el resto
  *   de los datos (cliente, items, precio) se trae con la fuente de verdad:
  *   GET /orders/{order_id} de la API publica (autenticada con X-API-Key).
+ *
+ * Forma real del evento (relevada del "evento de prueba" del panel):
+ *   { "type": "webhooks.test", "event_id": "...",
+ *     "reference": { "id": 191, "object": "webhook_endpoint" },
+ *     "business_id": 81394, "occurred_at": "2026-09-20 13:20:58" }
+ * Es decir: el tipo va en `type` (no `event`) y el id del objeto afectado en
+ * `reference.id`. Para orders.payment_paid se asume que `reference` apunta a
+ * la orden (`object: "order"`), por analogia; a confirmar con un evento real.
  */
 
 const BUSINESS_SLUG = process.env.TIENDUP_BUSINESS_SLUG || "peliando";
@@ -61,9 +69,13 @@ function verificarFirma(rawBody: string, signatureHeader: string | null, secret:
 function extraerOrderId(body: unknown): number | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
+  const reference = b.reference as Record<string, unknown> | undefined;
   const data = b.data as Record<string, unknown> | undefined;
 
-  const candidato = data?.id ?? data?.order_id ?? b.id ?? b.order_id ?? b.resource_id;
+  // `reference.id` es lo que manda Tiendup; el resto son respaldos por si el
+  // evento de pago trae otra forma.
+  const candidato =
+    reference?.id ?? data?.id ?? data?.order_id ?? b.order_id ?? b.resource_id;
   const n = Number(candidato);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
@@ -95,6 +107,9 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
   if (!verificarFirma(rawBody, request.headers.get("x-tiendup-signature"), secret)) {
+    // Solo nombres de headers (nunca valores): sirve para ver en los logs si
+    // Tiendup manda la firma con otro nombre o con otro esquema.
+    console.warn("[tiendup] firma invalida. Headers recibidos:", [...request.headers.keys()].join(", "));
     return NextResponse.json({ error: "Firma invalida" }, { status: 401 });
   }
 
@@ -105,11 +120,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body invalido" }, { status: 400 });
   }
 
-  // Solo nos interesa el pago confirmado; otros eventos se reconocen sin
-  // efecto para que Tiendup no los siga reintentando.
-  const eventType = (body as Record<string, unknown>)?.event as string | undefined;
-  if (eventType && eventType !== "orders.payment_paid") {
-    return NextResponse.json({ ok: true, skipped: eventType });
+  // Solo nos interesa el pago confirmado; cualquier otro evento (incluido
+  // "webhooks.test", el de prueba del panel) se reconoce con 200 y sin efecto
+  // para que Tiendup no lo siga reintentando.
+  const b = body as Record<string, unknown>;
+  const eventType = (b?.type ?? b?.event) as string | undefined;
+  if (eventType !== "orders.payment_paid") {
+    return NextResponse.json({ ok: true, skipped: eventType ?? "sin tipo" });
   }
 
   const orderId = extraerOrderId(body);
