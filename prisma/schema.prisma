@@ -186,6 +186,11 @@ model Venta {
   montoCobrado      Decimal     @default(0) @db.Decimal(12, 2)
   descripcion       String?
   origen            OrigenVenta @default(MANUAL)
+  // Id de la orden en Tiendup (solo origen WEBHOOK_TIENDUP). El @unique
+  // hace que un reintento de entrega del webhook choque contra la
+  // restriccion de la base en vez de una consulta previa + insert, que deja
+  // una ventana para duplicar la venta si dos entregas llegan casi juntas.
+  tiendupOrderId    Int?        @unique
   fecha             DateTime    @default(now())
   createdAt         DateTime    @default(now())
 

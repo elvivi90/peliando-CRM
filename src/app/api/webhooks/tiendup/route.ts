@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { parseFechaHoraArgentina } from "@/lib/date";
 
 /**
  * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
@@ -134,9 +136,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No se encontro el id de la orden en el evento" }, { status: 400 });
   }
 
-  // Idempotencia: Tiendup puede reintentar la entrega del mismo evento.
+  // Atajo para reintentos obvios: evita volver a golpear la API de Tiendup.
+  // La garantia real de no duplicar viene de la restriccion @unique en
+  // tiendupOrderId (ver el catch del create mas abajo), no de este chequeo:
+  // si dos entregas del mismo evento llegan casi juntas, las dos podrian
+  // pasar este find antes de que la primera termine de insertar.
   const descripcion = `Tiendup orden #${orderId}`;
-  const yaExiste = await prisma.venta.findFirst({ where: { descripcion } });
+  const yaExiste = await prisma.venta.findFirst({ where: { tiendupOrderId: orderId } });
   if (yaExiste) {
     return NextResponse.json({ ok: true, ventaId: yaExiste.id, duplicado: true });
   }
@@ -169,10 +175,14 @@ export async function POST(request: NextRequest) {
   if (!producto) {
     return NextResponse.json({ error: "No hay ningun producto cargado en el CRM" }, { status: 404 });
   }
+  // La orden ya esta pagada: la venta se registra igual aunque el stock del
+  // CRM este desactualizado. El stock puede quedar en negativo a proposito,
+  // como alerta de que hay que recontar/reponer — nunca se pierde una venta
+  // ya cobrada por una diferencia de stock.
   if (producto.stockActual < cantidad) {
-    return NextResponse.json(
-      { error: `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual})` },
-      { status: 409 },
+    console.warn(
+      `[tiendup] orden #${orderId}: stock insuficiente de "${producto.nombre}" ` +
+        `(disponible: ${producto.stockActual}, vendido: ${cantidad}). Se registra igual, stock queda en negativo.`,
     );
   }
 
@@ -192,35 +202,48 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
-  // "YYYY-MM-DD HH:mm:ss" -> Date (tratado como hora local, no UTC).
-  const fecha = new Date(order.creation_date.replace(" ", "T"));
+  // creation_date viene en hora de Argentina (ver lib/date.ts).
+  const fecha = parseFechaHoraArgentina(order.creation_date);
 
-  const venta = await prisma.$transaction(async (tx) => {
-    const nuevaVenta = await tx.venta.create({
-      data: {
-        clienteId: cliente.id,
-        productoId: producto.id,
-        usuarioId: usuarioSistema.id,
-        tipo: "MINORISTA",
-        cantidad,
-        cantidadEntregada: cantidad,
-        precioUnitario,
-        precioTotal,
-        montoCobrado: precioTotal,
-        origen: "WEBHOOK_TIENDUP",
-        fecha,
-        descripcion,
-      },
+  try {
+    const venta = await prisma.$transaction(async (tx) => {
+      const nuevaVenta = await tx.venta.create({
+        data: {
+          clienteId: cliente.id,
+          productoId: producto.id,
+          usuarioId: usuarioSistema.id,
+          tipo: "MINORISTA",
+          cantidad,
+          cantidadEntregada: cantidad,
+          precioUnitario,
+          precioTotal,
+          montoCobrado: precioTotal,
+          origen: "WEBHOOK_TIENDUP",
+          fecha,
+          descripcion,
+          tiendupOrderId: orderId,
+        },
+      });
+
+      await tx.entrega.create({ data: { ventaId: nuevaVenta.id, cantidad, fecha } });
+      await tx.producto.update({
+        where: { id: producto.id },
+        data: { stockActual: { decrement: cantidad } },
+      });
+
+      return nuevaVenta;
     });
 
-    await tx.entrega.create({ data: { ventaId: nuevaVenta.id, cantidad, fecha } });
-    await tx.producto.update({
-      where: { id: producto.id },
-      data: { stockActual: { decrement: cantidad } },
-    });
-
-    return nuevaVenta;
-  });
-
-  return NextResponse.json({ ok: true, ventaId: venta.id }, { status: 201 });
+    return NextResponse.json({ ok: true, ventaId: venta.id }, { status: 201 });
+  } catch (err) {
+    // Dos entregas del mismo evento llegaron casi juntas y las dos pasaron el
+    // chequeo de arriba: la restriccion @unique de tiendupOrderId rechaza la
+    // segunda insercion. Se busca la venta que sí se creo y se responde igual
+    // que en el chequeo temprano, en vez de duplicar o devolver un error.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const venta = await prisma.venta.findUnique({ where: { tiendupOrderId: orderId } });
+      if (venta) return NextResponse.json({ ok: true, ventaId: venta.id, duplicado: true });
+    }
+    throw err;
+  }
 }

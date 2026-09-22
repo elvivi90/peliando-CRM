@@ -23,3 +23,15 @@ export function todayInputValue(): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Convierte una fecha-hora "YYYY-MM-DD HH:mm:ss" en hora de Argentina (como
+ * la que manda la API de Tiendup) a un Date UTC correcto. Sin el offset
+ * explicito, `new Date("YYYY-MM-DDTHH:mm:ss")` la interpreta como hora LOCAL
+ * del proceso que corre el codigo, que en Vercel es UTC — corriendo el
+ * resultado 3 horas y, en compras de noche, hasta un dia entero. Argentina
+ * no usa horario de verano desde 2009, asi que el offset -03:00 es fijo.
+ */
+export function parseFechaHoraArgentina(value: string): Date {
+  return new Date(`${value.replace(" ", "T")}-03:00`);
+}
