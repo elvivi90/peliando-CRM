@@ -1,0 +1,18 @@
+# Postgres local para desarrollo y pruebas (webhooks, migraciones, seed) sin
+# tocar la base real de Supabase. Ver docs/db-local.md para el flujo completo.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: peliando
+      POSTGRES_PASSWORD: peliando
+      POSTGRES_DB: peliando_dev
+    ports:
+      # 5433, no 5432, para no chocar con un Postgres local que ya tengas instalado.
+      - "5433:5432"
+    volumes:
+      - peliando_db_local:/var/lib/postgresql/data
+
+volumes:
+  peliando_db_local:

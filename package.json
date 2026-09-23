@@ -10,7 +10,13 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:local:up": "docker compose up -d",
+    "db:local:down": "docker compose down",
+    "db:local:migrate": "dotenv -o -e .env -e .env.docker -- prisma migrate dev",
+    "db:local:seed": "dotenv -o -e .env -e .env.docker -- tsx prisma/seed.ts",
+    "db:local:studio": "dotenv -o -e .env -e .env.docker -- prisma studio",
+    "dev:local": "dotenv -o -e .env -e .env.docker -- next dev"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -34,6 +40,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "prisma": "^6.19.3",
