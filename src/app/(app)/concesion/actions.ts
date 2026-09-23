@@ -23,8 +23,10 @@ export async function crearEntregaConcesion(input: {
   const data = entregaSchema.parse(input);
 
   const cliente = await prisma.cliente.findUniqueOrThrow({ where: { id: data.clienteId } });
-  if (cliente.tipo !== "MAYORISTA") {
-    throw new Error("Solo se puede cargar una entrega en concesión a un cliente mayorista.");
+  if (cliente.tipo !== "MAYORISTA" && cliente.tipo !== "DISTRIBUIDOR") {
+    throw new Error(
+      "Solo se puede cargar una entrega en concesión a un cliente mayorista o distribuidor.",
+    );
   }
 
   const producto = await prisma.producto.findUniqueOrThrow({ where: { id: data.productoId } });

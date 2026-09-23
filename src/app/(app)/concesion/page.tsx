@@ -10,11 +10,11 @@ export default async function ConcesionPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Concesión"
-        subtitle="Mercadería entregada a mayoristas sin que sea venta todavía; se liquida cuando avisan cuánto vendieron. Las entregas nuevas se cargan desde la ficha del cliente mayorista."
+        subtitle="Mercadería entregada a mayoristas y distribuidores sin que sea venta todavía; se liquida cuando avisan cuánto vendieron. Las entregas nuevas se cargan desde la ficha del cliente."
       />
 
       {concesiones.length === 0 ? (
-        <EmptyState title="Todavía no hay entregas en concesión" subtitle="Se crean desde la ficha de un cliente mayorista." />
+        <EmptyState title="Todavía no hay entregas en concesión" subtitle="Se crean desde la ficha de un cliente mayorista o distribuidor." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {concesiones.map((c) => (

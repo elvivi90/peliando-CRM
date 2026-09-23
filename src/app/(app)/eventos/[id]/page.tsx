@@ -2,8 +2,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
+import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { Prisma } from "@prisma/client";
+import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
+import { eliminarEvento } from "@/app/(app)/eventos/actions";
 
 export default async function EventoDetailPage({
   params,
@@ -27,11 +30,19 @@ export default async function EventoDetailPage({
   const neto = totalVentas.minus(totalGastos);
   const unidades = evento.ventas.reduce((s, v) => s + v.cantidad, 0);
 
+  const usuario = await getCurrentUsuario();
+  const puedeEliminar = esAdminPrincipal(usuario);
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title={evento.nombre}
         subtitle={`${formatDate(evento.fecha)}${evento.lugar ? ` · ${evento.lugar}` : ""}`}
+        action={
+          puedeEliminar && (
+            <BotonEliminar entidad="este evento" onEliminar={eliminarEvento.bind(null, evento.id)} />
+          )
+        }
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

@@ -14,7 +14,8 @@ datasource db {
 }
 
 // Concesion NO es un tipo de cliente: es una modalidad de entrega/venta que
-// se crea solo desde la ficha de un cliente MAYORISTA (ver Concesion).
+// se crea solo desde la ficha de un cliente MAYORISTA o DISTRIBUIDOR (ver
+// Concesion).
 enum TipoCliente {
   MINORISTA
   MAYORISTA
@@ -213,10 +214,11 @@ model Entrega {
   @@map("entregas")
 }
 
-// El cliente mayorista recibe mercaderia sin que sea venta todavia: sale del
-// stock general en la entrega, pero recien se vuelve Venta al liquidar.
-// Una devolucion resta de lo entregado y vuelve al stock del Producto.
-// Solo se crea desde la ficha de un cliente MAYORISTA.
+// El cliente mayorista o distribuidor recibe mercaderia sin que sea venta
+// todavia: sale del stock general en la entrega, pero recien se vuelve
+// Venta al liquidar. Una devolucion resta de lo entregado y vuelve al stock
+// del Producto. Solo se crea desde la ficha de un cliente MAYORISTA o
+// DISTRIBUIDOR.
 model Concesion {
   id                String   @id @default(uuid())
   clienteId         String

@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
+import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
+import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
+import { eliminarVenta } from "@/app/(app)/ventas/actions";
 
 export default async function VentaDetailPage({
   params,
@@ -27,12 +30,22 @@ export default async function VentaDetailPage({
 
   if (!venta) notFound();
 
+  const usuario = await getCurrentUsuario();
+  const puedeEliminar = esAdminPrincipal(usuario);
+
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <PageHeader
         title={venta.cliente ? `Venta a ${nombreCliente(venta.cliente)}` : "Venta rápida"}
         subtitle={formatDate(venta.fecha)}
-        action={<TipoBadge tipo={venta.tipo} />}
+        action={
+          <div className="flex items-center gap-2">
+            <TipoBadge tipo={venta.tipo} />
+            {puedeEliminar && (
+              <BotonEliminar entidad="esta venta" onEliminar={eliminarVenta.bind(null, venta.id)} />
+            )}
+          </div>
+        }
       />
 
       <div className="card-chunky p-5 grid grid-cols-2 gap-4">

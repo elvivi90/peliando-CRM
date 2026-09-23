@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUsuario } from "@/lib/auth";
+import { getCurrentUsuario, requireAdminPrincipal } from "@/lib/auth";
 import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/pricing";
 import { parseFechaInput } from "@/lib/date";
 import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
@@ -187,6 +187,32 @@ export async function registrarEntrega(ventaId: string, cantidad: number, fecha?
   revalidatePath(`/ventas/${ventaId}`);
   revalidatePath("/ventas");
   revalidatePath(`/clientes/${venta.clienteId}`);
+}
+
+// Solo el admin principal (ver lib/auth.ts). Devuelve la cantidad al stock
+// del producto (simetrico a crearVenta, que lo descuenta). entregas_ventaId
+// es CASCADE (se borran solas) y liquidaciones_concesion_ventaId es SET
+// NULL (si esta venta vino de liquidar una concesion, la liquidacion queda
+// sin venta asociada pero no se borra ni bloquea el delete).
+export async function eliminarVenta(id: string) {
+  await requireAdminPrincipal();
+
+  const venta = await prisma.venta.findUniqueOrThrow({ where: { id } });
+
+  await prisma.$transaction([
+    prisma.venta.delete({ where: { id } }),
+    prisma.producto.update({
+      where: { id: venta.productoId },
+      data: { stockActual: { increment: venta.cantidad } },
+    }),
+  ]);
+
+  revalidatePath("/ventas");
+  revalidatePath("/dashboard");
+  revalidatePath("/productos");
+  if (venta.clienteId) revalidatePath(`/clientes/${venta.clienteId}`);
+  if (venta.eventoId) revalidatePath(`/eventos/${venta.eventoId}`);
+  redirect("/ventas");
 }
 
 export async function registrarCobro(ventaId: string, monto: number) {

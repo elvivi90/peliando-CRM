@@ -3,10 +3,13 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
+import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { Comentarios } from "@/components/clientes/comentarios";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getCuentaCorriente } from "@/lib/services/cuenta-corriente";
 import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
+import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
+import { eliminarCliente } from "@/app/(app)/clientes/actions";
 
 export default async function ClienteDetailPage({
   params,
@@ -36,11 +39,16 @@ export default async function ClienteDetailPage({
     include: { producto: true },
   });
 
-  const esMayorista = cliente.tipo === "MAYORISTA";
-  const productos = esMayorista ? await prisma.producto.findMany({ orderBy: { nombre: "asc" } }) : [];
+  // Concesion: modalidad de entrega para mayoristas y distribuidores (no
+  // aparece para minoristas). Cuenta corriente aplica a los dos mismos tipos.
+  const puedeConcesion = cliente.tipo === "MAYORISTA" || cliente.tipo === "DISTRIBUIDOR";
+  const productos = puedeConcesion ? await prisma.producto.findMany({ orderBy: { nombre: "asc" } }) : [];
 
-  const tieneCuentaCorriente = cliente.tipo === "MAYORISTA" || cliente.tipo === "DISTRIBUIDOR";
+  const tieneCuentaCorriente = puedeConcesion;
   const cuentaCorriente = tieneCuentaCorriente ? await getCuentaCorriente(id) : null;
+
+  const usuario = await getCurrentUsuario();
+  const puedeEliminar = esAdminPrincipal(usuario);
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,9 +56,14 @@ export default async function ClienteDetailPage({
         title={`${cliente.nombre} ${cliente.apellido}`}
         subtitle={cliente.email || cliente.telefono || undefined}
         action={
-          <Link href={`/clientes/${id}/editar`} className="btn-secondary text-sm">
-            Editar
-          </Link>
+          <div className="flex gap-2">
+            <Link href={`/clientes/${id}/editar`} className="btn-secondary text-sm">
+              Editar
+            </Link>
+            {puedeEliminar && (
+              <BotonEliminar entidad="este cliente" onEliminar={eliminarCliente.bind(null, id)} />
+            )}
+          </div>
         }
       />
 
@@ -102,7 +115,7 @@ export default async function ClienteDetailPage({
             </div>
           )}
 
-          {esMayorista && (
+          {puedeConcesion && (
             <div className="card-chunky p-5">
               <h2 className="font-extrabold text-sm uppercase tracking-wide text-navy/60 mb-4">
                 Concesión

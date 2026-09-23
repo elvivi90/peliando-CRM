@@ -2,8 +2,8 @@
 
 CRM interno para llevar la contabilidad de ventas de Peliando (juego de mesa
 de debate sobre películas): clientes, lista de precios versionada, ventas
-(minorista, mayorista y distribuidor), concesiones a mayoristas, cuenta
-corriente, eventos, gastos y reportes mensuales. Ver `docs/Especificaciones — CRM Peliando.docx`
+(minorista, mayorista y distribuidor), concesiones a mayoristas y
+distribuidores, cuenta corriente, eventos, gastos y reportes mensuales. Ver `docs/Especificaciones — CRM Peliando.docx`
 para la especificación completa.
 
 Next.js (App Router) + Prisma + PostgreSQL/Auth vía Supabase, pensado como
@@ -56,6 +56,13 @@ npm run dev
 Abrir [http://localhost:3000](http://localhost:3000). Redirige a `/login`,
 y de ahí a `/dashboard` una vez autenticado.
 
+### 5. (Opcional) Base local para pruebas
+
+Para probar el webhook de Tiendup, una migración nueva, o cualquier cosa
+que escriba datos sin tocar la base real, ver
+[`docs/db-local.md`](docs/db-local.md) — un Postgres local con Docker,
+aislado de producción.
+
 ## Scripts
 
 - `npm run dev` — servidor de desarrollo
@@ -64,6 +71,9 @@ y de ahí a `/dashboard` una vez autenticado.
 - `npm run db:migrate` — aplica el schema de Prisma a la base
 - `npm run db:seed` — carga datos de ejemplo (producto + lista de precios)
 - `npm run db:studio` — abre Prisma Studio para inspeccionar los datos
+- `npm run dev:local` / `db:local:*` — mismos comandos, pero contra el
+  Postgres local de Docker en vez de la base real (ver
+  [`docs/db-local.md`](docs/db-local.md))
 
 ## Decisiones de diseño no explícitas en la especificación
 
@@ -75,8 +85,8 @@ y de ahí a `/dashboard` una vez autenticado.
   mantiene todo consistente con un único registro de verdad.
 - **Concesión no es un tipo de cliente** (`TipoCliente` solo tiene minorista,
   mayorista y distribuidor): es una modalidad de entrega que se crea
-  únicamente desde la ficha de un cliente mayorista — no aparece en Nueva
-  Venta ni aplica a minoristas o distribuidores. La mercadería entregada sale
+  únicamente desde la ficha de un cliente mayorista o distribuidor — no
+  aparece en Nueva Venta ni aplica a minoristas. La mercadería entregada sale
   del stock general pero no es venta hasta que se registra una liquidación;
   una devolución resta de lo entregado y vuelve al stock del producto.
 - **`Venta.tipo`** incluye `CONCESION` además de minorista/mayorista/

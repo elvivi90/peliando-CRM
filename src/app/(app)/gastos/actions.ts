@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUsuario } from "@/lib/auth";
+import { getCurrentUsuario, requireAdminPrincipal } from "@/lib/auth";
 import { parseFechaInput } from "@/lib/date";
 
 const gastoSchema = z.object({
@@ -42,4 +42,18 @@ export async function crearGasto(input: {
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
   redirect("/gastos");
+}
+
+// Solo el admin principal (ver lib/auth.ts). Nada referencia a Gasto, asi
+// que el delete es directo. Se queda en /gastos (no hay redirect): se llama
+// desde un boton inline en la tabla, no desde una pagina de detalle.
+export async function eliminarGasto(id: string) {
+  await requireAdminPrincipal();
+
+  const gasto = await prisma.gasto.findUniqueOrThrow({ where: { id } });
+  await prisma.gasto.delete({ where: { id } });
+
+  revalidatePath("/gastos");
+  revalidatePath("/dashboard");
+  if (gasto.eventoId) revalidatePath(`/eventos/${gasto.eventoId}`);
 }

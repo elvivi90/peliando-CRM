@@ -2,7 +2,10 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { formatDate, formatMoney } from "@/lib/format";
+import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
+import { eliminarGasto } from "@/app/(app)/gastos/actions";
 
 const CATEGORIA_LABEL: Record<string, string> = {
   TRANSPORTE: "Transporte",
@@ -17,6 +20,9 @@ export default async function GastosPage() {
     take: 100,
     include: { evento: true, usuario: true },
   });
+
+  const usuario = await getCurrentUsuario();
+  const puedeEliminar = esAdminPrincipal(usuario);
 
   return (
     <div>
@@ -43,6 +49,7 @@ export default async function GastosPage() {
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Categoría</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Evento</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Monto</th>
+                  {puedeEliminar && <th className="px-5 py-3" />}
                 </tr>
               </thead>
               <tbody>
@@ -53,6 +60,11 @@ export default async function GastosPage() {
                     <td className="px-5 py-3 text-navy/60">{CATEGORIA_LABEL[g.categoria]}</td>
                     <td className="px-5 py-3 text-navy/60">{g.evento?.nombre ?? "—"}</td>
                     <td className="px-5 py-3 font-bold whitespace-nowrap">{formatMoney(g.monto)}</td>
+                    {puedeEliminar && (
+                      <td className="px-5 py-3 text-right">
+                        <BotonEliminar entidad="este gasto" onEliminar={eliminarGasto.bind(null, g.id)} compacto />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

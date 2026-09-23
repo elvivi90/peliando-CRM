@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUsuario } from "@/lib/auth";
+import { getCurrentUsuario, requireAdminPrincipal } from "@/lib/auth";
 import { clienteSchema, type ClienteInput } from "@/lib/validation/cliente";
 
 export async function crearCliente(input: ClienteInput) {
@@ -47,6 +48,28 @@ export async function actualizarCliente(id: string, input: ClienteInput) {
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${id}`);
   redirect(`/clientes/${id}`);
+}
+
+// Solo el admin principal (ver lib/auth.ts). clientes_clienteId_fkey en
+// ventas y concesiones es RESTRICT: si el cliente tiene ventas o
+// concesiones, Postgres rechaza el delete — se traduce a un mensaje claro
+// en vez de dejar pasar el error crudo de Prisma.
+export async function eliminarCliente(id: string) {
+  await requireAdminPrincipal();
+
+  try {
+    await prisma.cliente.delete({ where: { id } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      throw new Error(
+        "Este cliente tiene ventas o concesiones asociadas: no se puede eliminar mientras existan.",
+      );
+    }
+    throw err;
+  }
+
+  revalidatePath("/clientes");
+  redirect("/clientes");
 }
 
 export async function agregarComentario(clienteId: string, texto: string) {
