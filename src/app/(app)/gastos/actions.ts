@@ -31,7 +31,7 @@ const gastoSchema = z.object({
   ),
 });
 
-export async function crearGasto(input: {
+type GastoInput = {
   tipo: string;
   categoria: string;
   concepto: string;
@@ -39,9 +39,11 @@ export async function crearGasto(input: {
   fecha: string;
   eventoId: string;
   unidadesGeneradas: string;
-}) {
+};
+
+// Validacion y campos calculados comunes a crear y editar.
+function datosGasto(input: GastoInput) {
   const data = gastoSchema.parse(input);
-  const usuario = await getCurrentUsuario();
 
   // Las unidades solo tienen sentido en una inversion de produccion (y ahi
   // son obligatorias); en cualquier otro caso se descartan aunque el
@@ -56,34 +58,60 @@ export async function crearGasto(input: {
     ? new Prisma.Decimal(data.monto).div(unidadesGeneradas).toDecimalPlaces(2)
     : null;
 
-  await prisma.gasto.create({
-    data: {
-      tipo: data.tipo,
-      categoria: data.categoria,
-      concepto: data.concepto,
-      monto: data.monto,
-      fecha: parseFechaInput(data.fecha),
-      eventoId: esInversion ? null : (data.eventoId ?? null),
-      usuarioId: usuario.id,
-      unidadesGeneradas,
-      costoUnitario,
-    },
-  });
+  return {
+    tipo: data.tipo,
+    categoria: data.categoria,
+    concepto: data.concepto,
+    monto: data.monto,
+    fecha: parseFechaInput(data.fecha),
+    eventoId: esInversion ? null : (data.eventoId ?? null),
+    unidadesGeneradas,
+    costoUnitario,
+  };
+}
+
+function revalidarGasto(eventoIds: (string | null)[]) {
+  revalidatePath("/gastos");
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
+  for (const id of new Set(eventoIds)) {
+    if (id) revalidatePath(`/eventos/${id}`);
+  }
+}
+
+export async function crearGasto(input: GastoInput) {
+  const datos = datosGasto(input);
+  const usuario = await getCurrentUsuario();
+
+  await prisma.gasto.create({ data: { ...datos, usuarioId: usuario.id } });
 
   after(() =>
     enviarNotificacion(
       {
         titulo: `Nuevo gasto de ${usuario.nombre}`,
-        cuerpo: `${data.concepto} · ${formatMoney(data.monto)}`,
+        cuerpo: `${datos.concepto} · ${formatMoney(datos.monto)}`,
         url: "/gastos",
       },
       { excluirUsuarioId: usuario.id },
     ),
   );
 
-  revalidatePath("/gastos");
-  revalidatePath("/dashboard");
-  revalidatePath("/reportes");
+  revalidarGasto([datos.eventoId]);
+  redirect("/gastos");
+}
+
+// Cualquier usuario puede editar (igual que clientes); solo borrar es del
+// admin principal. usuarioId no se toca: queda quien lo cargo. Editar no
+// notifica: el aviso es para enterarse de gastos nuevos.
+export async function actualizarGasto(id: string, input: GastoInput) {
+  const datos = datosGasto(input);
+  await getCurrentUsuario();
+
+  const anterior = await prisma.gasto.findUniqueOrThrow({ where: { id } });
+  await prisma.gasto.update({ where: { id }, data: datos });
+
+  // Tambien el evento anterior, si el gasto se movio de evento.
+  revalidarGasto([anterior.eventoId, datos.eventoId]);
   redirect("/gastos");
 }
 
@@ -96,7 +124,5 @@ export async function eliminarGasto(id: string) {
   const gasto = await prisma.gasto.findUniqueOrThrow({ where: { id } });
   await prisma.gasto.delete({ where: { id } });
 
-  revalidatePath("/gastos");
-  revalidatePath("/dashboard");
-  if (gasto.eventoId) revalidatePath(`/eventos/${gasto.eventoId}`);
+  revalidarGasto([gasto.eventoId]);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { crearGasto } from "@/app/(app)/gastos/actions";
+import { crearGasto, actualizarGasto } from "@/app/(app)/gastos/actions";
 import { todayInputValue } from "@/lib/date";
 import { formatMoney } from "@/lib/format";
 
@@ -17,14 +17,37 @@ const CATEGORIAS = [
   { value: "OTROS", label: "Otros" },
 ] as const;
 
-export function GastoForm({ eventos }: { eventos: { id: string; nombre: string }[] }) {
-  const [tipo, setTipo] = useState<(typeof TIPOS)[number]["value"]>("OPERATIVO");
-  const [categoria, setCategoria] = useState<string>("TRANSPORTE");
-  const [concepto, setConcepto] = useState("");
-  const [monto, setMonto] = useState("");
-  const [fecha, setFecha] = useState(() => todayInputValue());
-  const [eventoId, setEventoId] = useState("");
-  const [unidadesGeneradas, setUnidadesGeneradas] = useState("");
+type Tipo = (typeof TIPOS)[number]["value"];
+
+export type GastoFormValues = {
+  tipo: Tipo;
+  categoria: string;
+  concepto: string;
+  monto: string;
+  fecha: string;
+  eventoId: string;
+  unidadesGeneradas: string;
+};
+
+export function GastoForm({
+  eventos,
+  gastoId,
+  defaultValues,
+}: {
+  eventos: { id: string; nombre: string }[];
+  // Con gastoId el formulario edita ese gasto en vez de crear uno.
+  gastoId?: string;
+  defaultValues?: GastoFormValues;
+}) {
+  const [tipo, setTipo] = useState<Tipo>(defaultValues?.tipo ?? "OPERATIVO");
+  const [categoria, setCategoria] = useState(defaultValues?.categoria ?? "TRANSPORTE");
+  const [concepto, setConcepto] = useState(defaultValues?.concepto ?? "");
+  const [monto, setMonto] = useState(defaultValues?.monto ?? "");
+  const [fecha, setFecha] = useState(() => defaultValues?.fecha ?? todayInputValue());
+  const [eventoId, setEventoId] = useState(defaultValues?.eventoId ?? "");
+  const [unidadesGeneradas, setUnidadesGeneradas] = useState(
+    defaultValues?.unidadesGeneradas ?? "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -41,7 +64,7 @@ export function GastoForm({ eventos }: { eventos: { id: string; nombre: string }
     setError(null);
     startTransition(async () => {
       try {
-        await crearGasto({
+        const input = {
           tipo,
           categoria,
           concepto,
@@ -51,7 +74,9 @@ export function GastoForm({ eventos }: { eventos: { id: string; nombre: string }
           // un gasto de una feria.
           eventoId: esInversion ? "" : eventoId,
           unidadesGeneradas: esProduccion ? unidadesGeneradas : "",
-        });
+        };
+        if (gastoId) await actualizarGasto(gastoId, input);
+        else await crearGasto(input);
       } catch (err) {
         const digest = (err as { digest?: string })?.digest;
         if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) throw err;
@@ -196,7 +221,7 @@ export function GastoForm({ eventos }: { eventos: { id: string; nombre: string }
         disabled={pending}
         className={`btn-primary self-start ${esInversion ? "bg-rosa" : ""}`}
       >
-        {pending ? "Guardando..." : "Registrar gasto"}
+        {pending ? "Guardando..." : gastoId ? "Guardar cambios" : "Registrar gasto"}
       </button>
     </form>
   );

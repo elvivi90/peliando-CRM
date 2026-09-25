@@ -51,7 +51,7 @@ export default async function GastosPage() {
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Categoría</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Evento</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Monto</th>
-                  {puedeEliminar && <th className="px-5 py-3" />}
+                  <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -65,11 +65,19 @@ export default async function GastosPage() {
                     <td className="px-5 py-3 text-navy/60">{CATEGORIA_LABEL[g.categoria]}</td>
                     <td className="px-5 py-3 text-navy/60">{g.evento?.nombre ?? "—"}</td>
                     <td className="px-5 py-3 font-bold whitespace-nowrap">{formatMoney(g.monto)}</td>
-                    {puedeEliminar && (
-                      <td className="px-5 py-3 text-right">
-                        <BotonEliminar entidad="este gasto" onEliminar={eliminarGasto.bind(null, g.id)} compacto />
-                      </td>
-                    )}
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      <div className="flex justify-end gap-3">
+                        <Link
+                          href={`/gastos/${g.id}/editar`}
+                          className="text-xs font-bold text-navy/70 hover:underline"
+                        >
+                          Editar
+                        </Link>
+                        {puedeEliminar && (
+                          <BotonEliminar entidad="este gasto" onEliminar={eliminarGasto.bind(null, g.id)} compacto />
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

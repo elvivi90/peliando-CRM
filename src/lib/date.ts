@@ -17,10 +17,19 @@ export function parseFechaInput(value: string): Date {
  * muestra el dia siguiente entre las 21:00 y las 23:59.
  */
 export function todayInputValue(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+  return fechaInputValue(new Date());
+}
+
+/**
+ * Valor para un <input type="date"> a partir de una fecha guardada con
+ * parseFechaInput. Usa la hora LOCAL del proceso, la misma con la que se
+ * guardo (medianoche local), asi que hay que llamarla del mismo lado: en el
+ * servidor si la fecha se parseo en una server action.
+ */
+export function fechaInputValue(fecha: Date): string {
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
