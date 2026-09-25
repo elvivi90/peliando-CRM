@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { esVentaEditable } from "@/lib/validation/venta";
 import type { TipoVenta } from "@prisma/client";
 
 const TIPOS: { value: TipoVenta | ""; label: string }[] = [
@@ -82,6 +83,7 @@ export default async function VentasPage({
                   <th className="px-5 py-3 font-extrabold text-xs uppercase tracking-wide text-navy/60 hidden md:table-cell">
                     Evento
                   </th>
+                  <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -117,6 +119,16 @@ export default async function VentasPage({
                     </td>
                     <td className="px-5 py-3 text-navy/60 hidden md:table-cell">
                       {v.evento?.nombre ?? "—"}
+                    </td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      {esVentaEditable(v) && (
+                        <Link
+                          href={`/ventas/${v.id}/editar`}
+                          className="text-xs font-bold text-navy/70 hover:underline"
+                        >
+                          Editar
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

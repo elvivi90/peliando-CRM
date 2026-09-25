@@ -35,3 +35,10 @@ export const ventaSchema = z.object({
 });
 
 export type VentaInput = z.input<typeof ventaSchema>;
+
+// Tiendup trae precio y cantidades de la orden, y la venta de una
+// liquidacion es espejo de LiquidacionConcesion: editarlas desde el
+// formulario las desincronizaria de su origen.
+export function esVentaEditable(venta: { origen: string; tipo: string }) {
+  return venta.origen === "MANUAL" && venta.tipo !== "CONCESION";
+}

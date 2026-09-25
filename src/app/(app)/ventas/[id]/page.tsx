@@ -8,6 +8,7 @@ import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
+import { esVentaEditable } from "@/lib/validation/venta";
 
 export default async function VentaDetailPage({
   params,
@@ -41,6 +42,11 @@ export default async function VentaDetailPage({
         action={
           <div className="flex items-center gap-2">
             <TipoBadge tipo={venta.tipo} />
+            {esVentaEditable(venta) && (
+              <Link href={`/ventas/${venta.id}/editar`} className="btn-secondary text-sm">
+                Editar
+              </Link>
+            )}
             {puedeEliminar && (
               <BotonEliminar entidad="esta venta" onEliminar={eliminarVenta.bind(null, venta.id)} />
             )}

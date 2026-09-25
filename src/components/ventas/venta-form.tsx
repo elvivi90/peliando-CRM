@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import {
   crearVenta,
+  actualizarVenta,
   previsualizarPrecio,
   type PrevisualizacionPrecio,
 } from "@/app/(app)/ventas/actions";
@@ -23,32 +24,50 @@ type Modo = "RAPIDA" | "MAYORISTA";
 
 const TOTAL_PASOS = 4;
 
+// Venta existente que se edita (ver /ventas/[id]/editar).
+export type VentaEditable = {
+  id: string;
+  clienteId: string | null;
+  productoId: string;
+  cantidad: number;
+  precioUnitario: number;
+  precioTotal: number;
+  montoCobrado: number;
+  eventoId: string | null;
+  fecha: string;
+};
+
 export function VentaForm({
   clientes: clientesIniciales,
   productos,
   eventos: eventosIniciales,
+  venta,
 }: {
   clientes: Cliente[];
   productos: Producto[];
   eventos: Evento[];
+  venta?: VentaEditable;
 }) {
   const [paso, setPaso] = useState(1);
-  const [modo, setModo] = useState<Modo>("RAPIDA");
+  const [modo, setModo] = useState<Modo>(venta?.clienteId ? "MAYORISTA" : "RAPIDA");
 
   const [clientes, setClientes] = useState(clientesIniciales);
   const [eventos, setEventos] = useState(eventosIniciales);
 
-  const [clienteId, setClienteId] = useState("");
-  const [productoId, setProductoId] = useState(productos[0]?.id ?? "");
-  const [cantidad, setCantidad] = useState("1");
+  const [clienteId, setClienteId] = useState(venta?.clienteId ?? "");
+  const [productoId, setProductoId] = useState(venta?.productoId ?? productos[0]?.id ?? "");
+  const [cantidad, setCantidad] = useState(venta ? String(venta.cantidad) : "1");
+  // Al editar, mientras no se toquen cliente, cantidad ni tramo se conserva
+  // el precio guardado en vez de recalcularlo con la lista de hoy.
+  const [tocoPrecio, setTocoPrecio] = useState(false);
   // null = usar el precio sugerido; string = el usuario lo editó
   const [precioEditado, setPrecioEditado] = useState<string | null>(null);
   const [editandoPrecio, setEditandoPrecio] = useState(false);
   // null = el tramo que corresponde a la cantidad; string = elegido a mano
   const [tramoElegido, setTramoElegido] = useState<string | null>(null);
 
-  const [fecha, setFecha] = useState(() => todayInputValue());
-  const [eventoId, setEventoId] = useState("");
+  const [fecha, setFecha] = useState(() => venta?.fecha ?? todayInputValue());
+  const [eventoId, setEventoId] = useState(venta?.eventoId ?? "");
   // null = usar el monto por defecto (rápida: total cobrado; mayorista: 0)
   const [montoInput, setMontoInput] = useState<string | null>(null);
 
@@ -83,18 +102,35 @@ export function VentaForm({
 
   const productoSel = productos.find((p) => p.id === productoId);
   const clienteSel = clientes.find((c) => c.id === clienteId);
-  const sinStock = Boolean(productoSel && cantidadNum > productoSel.stockActual);
+  // Al editar, las unidades de la venta vuelven al stock antes de descontar.
+  const stockDisponible =
+    (productoSel?.stockActual ?? 0) + (venta && venta.productoId === productoId ? venta.cantidad : 0);
+  const consumoExtra =
+    venta && venta.productoId === productoId ? cantidadNum - venta.cantidad : cantidadNum;
+  const sinStock = Boolean(productoSel && consumoExtra > 0 && cantidadNum > stockDisponible);
 
+  const mantenerPrecio = Boolean(venta) && !tocoPrecio;
+  const precioBase = mantenerPrecio && venta ? venta.precioUnitario : (preview?.precioUnitario ?? 0);
   const precioEditable = preview?.editable ?? false;
   const precioUnitario = (() => {
     if (!preview) return 0;
     if (precioEditable && precioEditado !== null && precioEditado !== "") return Number(precioEditado);
-    return preview.precioUnitario;
+    return precioBase;
   })();
   const precioValido = Number.isFinite(precioUnitario) && precioUnitario >= 0;
   const precioTotal = precioUnitario * cantidadNum;
 
-  const montoFinal = montoInput ?? String(modo === "RAPIDA" ? precioTotal : 0);
+  // Por defecto: rapida = cobrada entera, mayorista = nada. Al editar, una
+  // venta que estaba cobrada entera sigue cobrada entera con el total nuevo;
+  // si no, se mantiene lo cobrado.
+  const montoPorDefecto = venta
+    ? venta.montoCobrado >= venta.precioTotal
+      ? precioTotal
+      : venta.montoCobrado
+    : modo === "RAPIDA"
+      ? precioTotal
+      : 0;
+  const montoFinal = montoInput ?? String(montoPorDefecto);
   const montoNum = Number(montoFinal);
   const montoValido = Number.isFinite(montoNum) && montoNum >= 0 && montoNum <= precioTotal + 0.005;
 
@@ -116,12 +152,14 @@ export function VentaForm({
     setModo(m);
     setPrecioEditado(null);
     setTramoElegido(null);
+    setTocoPrecio(true);
   }
 
   function handleCantidad(v: string) {
     setCantidad(v);
     setPrecioEditado(null);
     setTramoElegido(null);
+    setTocoPrecio(true);
   }
 
   function handleCliente(id: string) {
@@ -129,6 +167,7 @@ export function VentaForm({
     setClienteCreado(false);
     setPrecioEditado(null);
     setTramoElegido(null);
+    setTocoPrecio(true);
   }
 
   function handleClienteCreado(c: ClienteCreado) {
@@ -137,12 +176,14 @@ export function VentaForm({
     setClienteCreado(true);
     setPrecioEditado(null);
     setTramoElegido(null);
+    setTocoPrecio(true);
     setModal(null);
   }
 
   function handleTramoAplicado(id: string | null) {
     setTramoElegido(id);
     setPrecioEditado(null);
+    setTocoPrecio(true);
     setModal(null);
   }
 
@@ -160,25 +201,28 @@ export function VentaForm({
       precioEditable &&
       precioEditado !== null &&
       precioEditado !== "" &&
-      Number(precioEditado) !== preview.precioUnitario
+      Number(precioEditado) !== precioBase
         ? precioEditado
         : undefined;
 
     startTransition(async () => {
       try {
-        await crearVenta({
+        const input = {
           clienteId: modo === "MAYORISTA" ? clienteId : "",
           productoId,
           eventoId,
           cantidad,
           // El diseño no tiene entrega parcial: se entrega todo. Lo pendiente
-          // se puede ajustar después desde el detalle de la venta.
+          // se puede ajustar después desde el detalle de la venta. Al editar
+          // lo ignora el servidor, que ajusta las entregas que ya existen.
           cantidadEntregada: cantidad,
           precioUnitarioManual: precioManual,
           tramoId: tramoElegido ?? "",
           montoCobrado: montoFinal || "0",
           fecha,
-        });
+        };
+        if (venta) await actualizarVenta(venta.id, input, mantenerPrecio);
+        else await crearVenta(input);
       } catch (err) {
         const digest = (err as { digest?: string })?.digest;
         if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) throw err;
@@ -188,7 +232,7 @@ export function VentaForm({
   }
 
   const opcionesClientes = clientes
-    .filter((c) => c.tipo === "MAYORISTA" || c.tipo === "DISTRIBUIDOR")
+    .filter((c) => c.tipo === "MAYORISTA" || c.tipo === "DISTRIBUIDOR" || c.id === venta?.clienteId)
     .map((c) => ({
       id: c.id,
       label: `${`${c.nombre} ${c.apellido}`.trim()} (${c.tipo.toLowerCase()})`,
@@ -304,7 +348,7 @@ export function VentaForm({
               />
               {sinStock && productoSel && (
                 <span className="text-xs font-bold text-rosa">
-                  Stock insuficiente (disponible: {productoSel.stockActual}).
+                  Stock insuficiente (disponible: {stockDisponible}).
                 </span>
               )}
             </Campo>
@@ -321,6 +365,7 @@ export function VentaForm({
                 onCambio={setPrecioEditado}
                 tramoElegido={tramoElegido !== null}
                 onCambiarTramo={() => setModal("tramo")}
+                precioGuardado={mantenerPrecio}
               />
             )}
 
@@ -367,7 +412,7 @@ export function VentaForm({
               />
             </Campo>
 
-            <Campo label="Monto cobrado ahora">
+            <Campo label={venta ? "Monto cobrado" : "Monto cobrado ahora"}>
               <input
                 type="number"
                 min="0"
@@ -390,7 +435,10 @@ export function VentaForm({
 
         {paso === 4 && (
           <div className="flex flex-col gap-5">
-            <Encabezado titulo="Confirmar venta" subtitulo="Revisá antes de registrar" />
+            <Encabezado
+              titulo={venta ? "Confirmar cambios" : "Confirmar venta"}
+              subtitulo={venta ? "Revisá antes de guardar" : "Revisá antes de registrar"}
+            />
 
             <dl className="rounded-xl border-2 border-navy px-4 py-3 flex flex-col gap-1.5 text-sm">
               <FilaResumen
@@ -410,7 +458,7 @@ export function VentaForm({
                 />
               )}
               <FilaResumen label="Producto" value={`${productoSel?.nombre ?? "—"} x${cantidadNum}`} />
-              {preview?.origen === "TRAMO" && (
+              {preview?.origen === "TRAMO" && !mantenerPrecio && (
                 <FilaResumen
                   label="Tramo"
                   value={`Desde ${preview.tramoDesde} un.${tramoElegido !== null ? " (elegido)" : ""}`}
@@ -419,7 +467,7 @@ export function VentaForm({
               <FilaResumen label="Precio" value={formatMoney(precioTotal)} />
               <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
               {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
-              <FilaResumen label="Cobrado ahora" value={formatMoney(montoNum)} />
+              <FilaResumen label={venta ? "Cobrado" : "Cobrado ahora"} value={formatMoney(montoNum)} />
             </dl>
 
             {error && (
@@ -438,7 +486,7 @@ export function VentaForm({
                 ← Atrás
               </button>
               <button type="button" onClick={registrar} disabled={pending} className="btn-primary">
-                {pending ? "Guardando..." : "✓ Registrar venta"}
+                {pending ? "Guardando..." : venta ? "✓ Guardar cambios" : "✓ Registrar venta"}
               </button>
             </div>
           </div>
@@ -579,6 +627,7 @@ function CajaPrecio({
   onCambio,
   tramoElegido,
   onCambiarTramo,
+  precioGuardado = false,
 }: {
   cargando: boolean;
   preview: PrevisualizacionPrecio;
@@ -591,6 +640,9 @@ function CajaPrecio({
   // true si el tramo se eligio a mano (no es el que corresponde a la cantidad)
   tramoElegido: boolean;
   onCambiarTramo: () => void;
+  // Editando sin tocar cliente/cantidad/tramo: se muestra el precio con el
+  // que se guardo la venta, no el de la lista de hoy.
+  precioGuardado?: boolean;
 }) {
   if (cargando) {
     return (
@@ -608,8 +660,9 @@ function CajaPrecio({
   }
 
   const modoPrecio = preview.editable ? "EDITABLE" : "FIJO";
-  const etiqueta =
-    preview.origen === "PVP"
+  const etiqueta = precioGuardado
+    ? `PRECIO DE LA VENTA — ${modoPrecio}`
+    : preview.origen === "PVP"
       ? `PVP MINORISTA — ${modoPrecio}`
       : preview.origen === "PARTICULAR"
         ? `PRECIO PARTICULAR — ${modoPrecio}`

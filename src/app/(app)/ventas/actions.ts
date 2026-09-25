@@ -9,30 +9,20 @@ import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/p
 import { parseFechaInput } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
-import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
+import { ventaSchema, esVentaEditable, type VentaInput } from "@/lib/validation/venta";
 import type { TipoVenta } from "@prisma/client";
 
-export async function crearVenta(input: VentaInput) {
-  const data = ventaSchema.parse(input);
+type VentaData = ReturnType<typeof ventaSchema.parse>;
+type ClienteVenta = Awaited<ReturnType<typeof prisma.cliente.findUniqueOrThrow>>;
 
-  if (data.cantidadEntregada > data.cantidad) {
-    throw new Error("La cantidad entregada no puede ser mayor a la cantidad vendida.");
-  }
+// Sin cliente = venta rapida: minorista al PVP de la lista activa.
+async function buscarCliente(clienteId: string | undefined) {
+  return clienteId ? prisma.cliente.findUniqueOrThrow({ where: { id: clienteId } }) : null;
+}
 
-  const usuario = await getCurrentUsuario();
-
-  // Sin cliente = venta rapida: minorista al PVP de la lista activa.
-  const cliente = data.clienteId
-    ? await prisma.cliente.findUniqueOrThrow({ where: { id: data.clienteId } })
-    : null;
-
-  const producto = await prisma.producto.findUniqueOrThrow({ where: { id: data.productoId } });
-  if (producto.stockActual < data.cantidad) {
-    throw new Error(
-      `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual}).`,
-    );
-  }
-
+// Precio segun la lista (ver lib/pricing.ts), con el override manual si el
+// tipo lo permite. Comun a crear y editar.
+async function calcularPrecio(data: VentaData, cliente: ClienteVenta | null) {
   const tipo: TipoVenta = cliente ? cliente.tipo : "MINORISTA";
 
   let sugerencia;
@@ -50,11 +40,32 @@ export async function crearVenta(input: VentaInput) {
   }
 
   // Distribuidor: la formula (tramo - 20%) es obligatoria, no admite override manual.
-  const permiteManual = tipo !== "DISTRIBUIDOR";
   const precioUnitario =
-    permiteManual && data.precioUnitarioManual !== undefined
+    tipo !== "DISTRIBUIDOR" && data.precioUnitarioManual !== undefined
       ? data.precioUnitarioManual
       : sugerencia.precioUnitario.toNumber();
+
+  return { tipo, listaId: sugerencia.listaId, tramoId: sugerencia.tramoId, precioUnitario };
+}
+
+export async function crearVenta(input: VentaInput) {
+  const data = ventaSchema.parse(input);
+
+  if (data.cantidadEntregada > data.cantidad) {
+    throw new Error("La cantidad entregada no puede ser mayor a la cantidad vendida.");
+  }
+
+  const usuario = await getCurrentUsuario();
+  const cliente = await buscarCliente(data.clienteId);
+
+  const producto = await prisma.producto.findUniqueOrThrow({ where: { id: data.productoId } });
+  if (producto.stockActual < data.cantidad) {
+    throw new Error(
+      `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual}).`,
+    );
+  }
+
+  const { tipo, listaId, tramoId, precioUnitario } = await calcularPrecio(data, cliente);
   const precioTotal = precioUnitario * data.cantidad;
 
   if (data.montoCobrado > precioTotal) {
@@ -69,8 +80,8 @@ export async function crearVenta(input: VentaInput) {
         usuarioId: usuario.id,
         eventoId: data.eventoId ?? null,
         tipo,
-        listaId: sugerencia.listaId,
-        tramoId: sugerencia.tramoId,
+        listaId,
+        tramoId,
         cantidad: data.cantidad,
         cantidadEntregada: data.cantidadEntregada,
         precioUnitario,
@@ -116,6 +127,134 @@ export async function crearVenta(input: VentaInput) {
   revalidatePath("/dashboard");
   if (data.clienteId) revalidatePath(`/clientes/${data.clienteId}`);
   redirect(`/ventas/${venta.id}`);
+}
+
+// Cualquier usuario puede editar (como gastos y clientes); solo borrar es del
+// admin principal. usuarioId no se toca y editar no notifica.
+//
+// mantenerPrecio: el formulario lo manda si no se tocaron cliente, cantidad
+// ni tramo. Entonces se conserva el precio guardado (y su lista/tramo) en vez
+// de recalcularlo con la lista de hoy, que puede haber cambiado desde la
+// venta. Solo se puede pisar a mano, igual que al crear.
+export async function actualizarVenta(id: string, input: VentaInput, mantenerPrecio: boolean) {
+  const data = ventaSchema.parse(input);
+  await getCurrentUsuario();
+
+  const anterior = await prisma.venta.findUniqueOrThrow({
+    where: { id },
+    include: { entregas: true },
+  });
+  if (!esVentaEditable(anterior)) {
+    throw new Error("Las ventas de Tiendup y las de liquidación de concesión no se editan.");
+  }
+
+  const cliente = await buscarCliente(data.clienteId);
+  const conservarPrecio =
+    mantenerPrecio &&
+    (data.clienteId ?? null) === anterior.clienteId &&
+    data.cantidad === anterior.cantidad;
+
+  const precio = conservarPrecio
+    ? {
+        tipo: anterior.tipo,
+        listaId: anterior.listaId,
+        tramoId: anterior.tramoId,
+        precioUnitario:
+          anterior.tipo !== "DISTRIBUIDOR" && data.precioUnitarioManual !== undefined
+            ? data.precioUnitarioManual
+            : anterior.precioUnitario.toNumber(),
+      }
+    : await calcularPrecio(data, cliente);
+  const precioTotal = precio.precioUnitario * data.cantidad;
+
+  // El formulario ya manda el total nuevo si la venta estaba cobrada entera.
+  if (data.montoCobrado > precioTotal) {
+    throw new Error("El monto cobrado no puede ser mayor al precio total.");
+  }
+
+  // Entregas: una venta que estaba entregada entera sigue entregada entera
+  // con la cantidad nueva (el caso normal: se cargo y se entrego en el acto).
+  // Si tenia una sola entrega se ajusta esa; si tenia varias y la cantidad
+  // sube, se agrega una por la diferencia. Con entrega parcial se respeta lo
+  // entregado: la cantidad no puede quedar por debajo.
+  const estabaEntregada = anterior.cantidadEntregada === anterior.cantidad;
+  const entregaUnica = anterior.entregas.length === 1 ? anterior.entregas[0] : null;
+  const variasEntregas = anterior.entregas.length > 1;
+  let cantidadEntregada = anterior.cantidadEntregada;
+  if (estabaEntregada && (!variasEntregas || data.cantidad > anterior.cantidad)) {
+    cantidadEntregada = data.cantidad;
+  } else if (data.cantidad < anterior.cantidadEntregada) {
+    throw new Error(
+      `Ya se entregaron ${anterior.cantidadEntregada} unidades: la cantidad no puede ser menor.`,
+    );
+  }
+
+  // Unidades de mas que esta edicion saca del stock del producto (nuevo).
+  const consumoExtra =
+    data.productoId === anterior.productoId ? data.cantidad - anterior.cantidad : data.cantidad;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.producto.update({
+      where: { id: anterior.productoId },
+      data: { stockActual: { increment: anterior.cantidad } },
+    });
+    const producto = await tx.producto.update({
+      where: { id: data.productoId },
+      data: { stockActual: { decrement: data.cantidad } },
+    });
+    // Solo se frena si la edicion pide unidades que no hay. Un stock que ya
+    // estaba en negativo (ver webhook de Tiendup) no impide corregir la
+    // fecha o el precio de una venta.
+    if (consumoExtra > 0 && producto.stockActual < 0) {
+      throw new Error(
+        `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual + data.cantidad}).`,
+      );
+    }
+
+    if (estabaEntregada && entregaUnica) {
+      // La entrega que se creo junto con la venta acompaña su fecha.
+      const mismaFecha = entregaUnica.fecha.getTime() === anterior.fecha.getTime();
+      await tx.entrega.update({
+        where: { id: entregaUnica.id },
+        data: { cantidad: data.cantidad, fecha: mismaFecha ? data.fecha : undefined },
+      });
+    } else if (estabaEntregada && variasEntregas && data.cantidad > anterior.cantidad) {
+      await tx.entrega.create({
+        data: { ventaId: id, cantidad: data.cantidad - anterior.cantidad, fecha: data.fecha },
+      });
+    }
+
+    await tx.venta.update({
+      where: { id },
+      data: {
+        clienteId: data.clienteId ?? null,
+        productoId: data.productoId,
+        eventoId: data.eventoId ?? null,
+        tipo: precio.tipo,
+        listaId: precio.listaId,
+        tramoId: precio.tramoId,
+        cantidad: data.cantidad,
+        cantidadEntregada,
+        precioUnitario: precio.precioUnitario,
+        precioTotal,
+        montoCobrado: data.montoCobrado,
+        fecha: data.fecha,
+      },
+    });
+  });
+
+  revalidatePath("/ventas");
+  revalidatePath(`/ventas/${id}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
+  revalidatePath("/productos");
+  for (const clienteId of new Set([anterior.clienteId, data.clienteId ?? null])) {
+    if (clienteId) revalidatePath(`/clientes/${clienteId}`);
+  }
+  for (const eventoId of new Set([anterior.eventoId, data.eventoId ?? null])) {
+    if (eventoId) revalidatePath(`/eventos/${eventoId}`);
+  }
+  redirect(`/ventas/${id}`);
 }
 
 export type PrevisualizacionPrecio = {
