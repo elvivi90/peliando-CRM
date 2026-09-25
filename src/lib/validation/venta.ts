@@ -24,6 +24,8 @@ export const ventaSchema = z.object({
     .optional()
     .transform((v) => (v && v.trim() !== "" ? Number(v) : undefined)),
   montoCobrado: z.coerce.number().min(0).default(0),
+  // Lo que le cuesta a Peliando el envio (no lo paga el cliente).
+  costoEnvio: z.coerce.number().min(0, "El costo de envío no puede ser negativo").default(0),
   descripcion: z
     .string()
     .optional()
@@ -35,10 +37,3 @@ export const ventaSchema = z.object({
 });
 
 export type VentaInput = z.input<typeof ventaSchema>;
-
-// Tiendup trae precio y cantidades de la orden, y la venta de una
-// liquidacion es espejo de LiquidacionConcesion: editarlas desde el
-// formulario las desincronizaria de su origen.
-export function esVentaEditable(venta: { origen: string; tipo: string }) {
-  return venta.origen === "MANUAL" && venta.tipo !== "CONCESION";
-}

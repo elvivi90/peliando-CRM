@@ -26,7 +26,10 @@ export default async function EventoDetailPage({
   if (!evento) notFound();
 
   const totalVentas = evento.ventas.reduce((s, v) => s.plus(v.precioTotal), new Prisma.Decimal(0));
-  const totalGastos = evento.gastos.reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0));
+  // Incluye el costo de envio de las ventas del evento (lo paga Peliando).
+  const totalGastos = evento.gastos
+    .reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0))
+    .plus(evento.ventas.reduce((s, v) => s.plus(v.costoEnvio), new Prisma.Decimal(0)));
   const neto = totalVentas.minus(totalGastos);
   const unidades = evento.ventas.reduce((s, v) => s + v.cantidad, 0);
 

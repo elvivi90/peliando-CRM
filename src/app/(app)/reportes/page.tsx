@@ -66,7 +66,11 @@ export default async function ReportesPage({
         <StatCard
           label="Total gastos"
           value={formatMoney(resumen.totalGastos)}
-          hint="solo operativos"
+          hint={
+            resumen.totalEnvios.gt(0)
+              ? `operativos + ${formatMoney(resumen.totalEnvios)} de envíos`
+              : "solo operativos"
+          }
           stripe="rosa"
         />
         <StatCard

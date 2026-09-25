@@ -27,14 +27,19 @@ const TOTAL_PASOS = 4;
 // Venta existente que se edita (ver /ventas/[id]/editar).
 export type VentaEditable = {
   id: string;
+  tipo: string;
   clienteId: string | null;
   productoId: string;
   cantidad: number;
   precioUnitario: number;
   precioTotal: number;
   montoCobrado: number;
+  costoEnvio: number;
   eventoId: string | null;
   fecha: string;
+  // Solo liquidaciones de concesion: cliente y producto quedan fijos, el
+  // precio es el cobrado (no sale de la lista) y la cantidad tiene tope.
+  concesion: { maxCantidad: number | null } | null;
 };
 
 export function VentaForm({
@@ -48,8 +53,14 @@ export function VentaForm({
   eventos: Evento[];
   venta?: VentaEditable;
 }) {
+  const esConcesion = Boolean(venta?.concesion);
+  // Venta minorista con cliente (las de Tiendup, o manuales viejas): se edita
+  // como venta rapida pero conserva su cliente.
+  const clienteMinoristaId = venta?.tipo === "MINORISTA" ? venta.clienteId : null;
   const [paso, setPaso] = useState(1);
-  const [modo, setModo] = useState<Modo>(venta?.clienteId ? "MAYORISTA" : "RAPIDA");
+  const [modo, setModo] = useState<Modo>(
+    venta?.clienteId && venta.tipo !== "MINORISTA" ? "MAYORISTA" : "RAPIDA",
+  );
 
   const [clientes, setClientes] = useState(clientesIniciales);
   const [eventos, setEventos] = useState(eventosIniciales);
@@ -70,6 +81,8 @@ export function VentaForm({
   const [eventoId, setEventoId] = useState(venta?.eventoId ?? "");
   // null = usar el monto por defecto (rápida: total cobrado; mayorista: 0)
   const [montoInput, setMontoInput] = useState<string | null>(null);
+  // Lo que le cuesta a Peliando el envío; vacío = sin envío.
+  const [costoEnvio, setCostoEnvio] = useState(venta?.costoEnvio ? String(venta.costoEnvio) : "");
 
   const [clienteCreado, setClienteCreado] = useState(false);
   const [eventoCreado, setEventoCreado] = useState(false);
@@ -81,12 +94,29 @@ export function VentaForm({
   const [pending, startTransition] = useTransition();
 
   const cantidadNum = Number(cantidad) || 0;
-  const clienteConsulta = modo === "MAYORISTA" ? clienteId : "";
+  const clienteConsulta = modo === "MAYORISTA" ? clienteId : (clienteMinoristaId ?? "");
   const consultaValida = cantidadNum > 0 && (modo === "RAPIDA" || Boolean(clienteId));
-  const preview = consultaValida ? fetchedPreview : null;
+  // Una liquidacion no tiene precio de lista: la caja muestra el cobrado.
+  const preview: PrevisualizacionPrecio =
+    esConcesion && venta
+      ? {
+          tipo: "CONCESION",
+          precioUnitario: venta.precioUnitario,
+          precioTotal: venta.precioUnitario * cantidadNum,
+          editable: true,
+          origen: "PARTICULAR",
+          tramoDesde: null,
+          tramoId: null,
+          tramoSugeridoId: null,
+          listaNombre: "",
+          tramos: [],
+        }
+      : consultaValida
+        ? fetchedPreview
+        : null;
 
   useEffect(() => {
-    if (!consultaValida) return;
+    if (!consultaValida || esConcesion) return;
     let activo = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- flag de carga de un fetch legitimo
     setCargandoPrecio(true);
@@ -98,7 +128,7 @@ export function VentaForm({
     return () => {
       activo = false;
     };
-  }, [clienteConsulta, cantidadNum, consultaValida, tramoElegido]);
+  }, [clienteConsulta, cantidadNum, consultaValida, tramoElegido, esConcesion]);
 
   const productoSel = productos.find((p) => p.id === productoId);
   const clienteSel = clientes.find((c) => c.id === clienteId);
@@ -107,9 +137,13 @@ export function VentaForm({
     (productoSel?.stockActual ?? 0) + (venta && venta.productoId === productoId ? venta.cantidad : 0);
   const consumoExtra =
     venta && venta.productoId === productoId ? cantidadNum - venta.cantidad : cantidadNum;
-  const sinStock = Boolean(productoSel && consumoExtra > 0 && cantidadNum > stockDisponible);
+  // La liquidacion no mueve stock (salio al entregar la concesion).
+  const sinStock =
+    !esConcesion && Boolean(productoSel && consumoExtra > 0 && cantidadNum > stockDisponible);
+  const maxConcesion = venta?.concesion?.maxCantidad ?? null;
+  const excedeConcesion = maxConcesion !== null && cantidadNum > maxConcesion;
 
-  const mantenerPrecio = Boolean(venta) && !tocoPrecio;
+  const mantenerPrecio = Boolean(venta) && (esConcesion || !tocoPrecio);
   const precioBase = mantenerPrecio && venta ? venta.precioUnitario : (preview?.precioUnitario ?? 0);
   const precioEditable = preview?.editable ?? false;
   const precioUnitario = (() => {
@@ -133,6 +167,8 @@ export function VentaForm({
   const montoFinal = montoInput ?? String(montoPorDefecto);
   const montoNum = Number(montoFinal);
   const montoValido = Number.isFinite(montoNum) && montoNum >= 0 && montoNum <= precioTotal + 0.005;
+  const costoEnvioNum = costoEnvio === "" ? 0 : Number(costoEnvio);
+  const costoEnvioValido = Number.isFinite(costoEnvioNum) && costoEnvioNum >= 0;
 
   const puedeAvanzarPaso2 =
     consultaValida &&
@@ -140,8 +176,9 @@ export function VentaForm({
     Boolean(preview) &&
     precioValido &&
     !sinStock &&
+    !excedeConcesion &&
     Boolean(productoId);
-  const puedeAvanzarPaso3 = Boolean(fecha) && montoValido;
+  const puedeAvanzarPaso3 = Boolean(fecha) && montoValido && costoEnvioValido;
 
   function irA(n: number) {
     setError(null);
@@ -208,7 +245,7 @@ export function VentaForm({
     startTransition(async () => {
       try {
         const input = {
-          clienteId: modo === "MAYORISTA" ? clienteId : "",
+          clienteId: modo === "MAYORISTA" ? clienteId : (clienteMinoristaId ?? ""),
           productoId,
           eventoId,
           cantidad,
@@ -219,6 +256,7 @@ export function VentaForm({
           precioUnitarioManual: precioManual,
           tramoId: tramoElegido ?? "",
           montoCobrado: montoFinal || "0",
+          costoEnvio: costoEnvio || "0",
           fecha,
         };
         if (venta) await actualizarVenta(venta.id, input, mantenerPrecio);
@@ -239,6 +277,10 @@ export function VentaForm({
     }));
   const opcionesEventos = eventos.map((e) => ({ id: e.id, label: e.nombre }));
   const eventoSel = eventos.find((e) => e.id === eventoId);
+  const clienteMinorista = clientes.find((c) => c.id === clienteMinoristaId);
+  const nombreClienteMinorista = clienteMinorista
+    ? `${clienteMinorista.nombre} ${clienteMinorista.apellido}`.trim()
+    : null;
 
   return (
     <>
@@ -254,22 +296,36 @@ export function VentaForm({
             }}
           >
             <Encabezado titulo="¿Qué tipo de venta?" subtitulo="Define el resto del flujo" />
-            <div role="radiogroup" aria-label="Tipo de venta" className="flex flex-col gap-2.5">
+            {esConcesion ? (
               <OpcionTipo
-                activo={modo === "RAPIDA"}
-                onClick={() => elegirModo("RAPIDA")}
-                icono={<IconoRayo />}
-                titulo="Venta rápida"
-                detalle="Sin cliente — ideal para eventos"
-              />
-              <OpcionTipo
-                activo={modo === "MAYORISTA"}
-                onClick={() => elegirModo("MAYORISTA")}
+                activo
+                onClick={() => {}}
                 icono={<IconoLocal />}
-                titulo="Mayorista/Distribuidor"
-                detalle="Con cliente, precio por tramo"
+                titulo="Liquidación de concesión"
+                detalle="Cliente y producto son los de la concesión"
               />
-            </div>
+            ) : (
+              <div role="radiogroup" aria-label="Tipo de venta" className="flex flex-col gap-2.5">
+                <OpcionTipo
+                  activo={modo === "RAPIDA"}
+                  onClick={() => elegirModo("RAPIDA")}
+                  icono={<IconoRayo />}
+                  titulo={nombreClienteMinorista ? "Venta minorista" : "Venta rápida"}
+                  detalle={
+                    nombreClienteMinorista
+                      ? `Cliente: ${nombreClienteMinorista}`
+                      : "Sin cliente — ideal para eventos"
+                  }
+                />
+                <OpcionTipo
+                  activo={modo === "MAYORISTA"}
+                  onClick={() => elegirModo("MAYORISTA")}
+                  icono={<IconoLocal />}
+                  titulo="Mayorista/Distribuidor"
+                  detalle="Con cliente, precio por tramo"
+                />
+              </div>
+            )}
             <div className="flex gap-2.5">
               <button type="submit" className="btn-primary">
                 Siguiente →
@@ -295,7 +351,21 @@ export function VentaForm({
               />
             )}
 
-            {modo === "MAYORISTA" && (
+            {modo === "RAPIDA" && nombreClienteMinorista && (
+              <Campo label="Cliente">
+                <span className="font-semibold">{nombreClienteMinorista}</span>
+              </Campo>
+            )}
+
+            {esConcesion && (
+              <Campo label="Cliente">
+                <span className="font-semibold">
+                  {clienteSel ? `${clienteSel.nombre} ${clienteSel.apellido}`.trim() : "—"}
+                </span>
+              </Campo>
+            )}
+
+            {modo === "MAYORISTA" && !esConcesion && (
               <Campo
                 label="Cliente"
                 required
@@ -326,6 +396,7 @@ export function VentaForm({
                 className="input-chunky"
                 value={productoId}
                 onChange={(e) => setProductoId(e.target.value)}
+                disabled={esConcesion}
                 required
               >
                 {productos.map((p) => (
@@ -351,9 +422,14 @@ export function VentaForm({
                   Stock insuficiente (disponible: {stockDisponible}).
                 </span>
               )}
+              {excedeConcesion && (
+                <span className="text-xs font-bold text-rosa">
+                  En esta concesión quedan {maxConcesion} unidades para liquidar.
+                </span>
+              )}
             </Campo>
 
-            {consultaValida && (
+            {(consultaValida || esConcesion) && (
               <CajaPrecio
                 cargando={cargandoPrecio}
                 preview={preview}
@@ -429,6 +505,22 @@ export function VentaForm({
               )}
             </Campo>
 
+            <Campo label="Costo de envío">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="Sin envío"
+                className="input-chunky w-40"
+                value={costoEnvio}
+                onChange={(e) => setCostoEnvio(e.target.value)}
+              />
+              <span className="text-xs text-navy/55">
+                Lo paga Peliando: no cambia el precio y suma como gasto del mes.
+              </span>
+            </Campo>
+
             <Navegacion onAtras={() => irA(2)} siguienteDeshabilitado={!puedeAvanzarPaso3} />
           </form>
         )}
@@ -444,13 +536,20 @@ export function VentaForm({
               <FilaResumen
                 label="Tipo"
                 value={
-                  modo === "RAPIDA"
-                    ? "Venta rápida"
-                    : preview?.tipo === "DISTRIBUIDOR"
-                      ? "Distribuidor"
-                      : "Mayorista"
+                  esConcesion
+                    ? "Liquidación de concesión"
+                    : modo === "RAPIDA"
+                      ? nombreClienteMinorista
+                        ? "Venta minorista"
+                        : "Venta rápida"
+                      : preview?.tipo === "DISTRIBUIDOR"
+                        ? "Distribuidor"
+                        : "Mayorista"
                 }
               />
+              {modo === "RAPIDA" && nombreClienteMinorista && (
+                <FilaResumen label="Cliente" value={nombreClienteMinorista} />
+              )}
               {modo === "MAYORISTA" && clienteSel && (
                 <FilaResumen
                   label="Cliente"
@@ -468,6 +567,9 @@ export function VentaForm({
               <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
               {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
               <FilaResumen label={venta ? "Cobrado" : "Cobrado ahora"} value={formatMoney(montoNum)} />
+              {costoEnvioNum > 0 && (
+                <FilaResumen label="Costo de envío" value={formatMoney(costoEnvioNum)} />
+              )}
             </dl>
 
             {error && (

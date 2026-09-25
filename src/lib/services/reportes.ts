@@ -21,7 +21,12 @@ export async function getResumenMes(anio: number, mes: number) {
   ]);
 
   const totalVentas = ventas.reduce((s, v) => s.plus(v.precioTotal), new Prisma.Decimal(0));
-  const totalGastos = gastos.reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0));
+  // Gastos del mes = gastos operativos + lo que costo enviar las ventas del
+  // mes (Venta.costoEnvio, lo paga Peliando).
+  const totalEnvios = ventas.reduce((s, v) => s.plus(v.costoEnvio), new Prisma.Decimal(0));
+  const totalGastos = gastos
+    .reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0))
+    .plus(totalEnvios);
   const unidadesVendidas = ventas.reduce((s, v) => s + v.cantidad, 0);
 
   const totalPorTipo = {
@@ -46,6 +51,7 @@ export async function getResumenMes(anio: number, mes: number) {
   return {
     totalVentas,
     totalGastos,
+    totalEnvios,
     neto: totalVentas.minus(totalGastos),
     unidadesVendidas,
     totalPorTipo,

@@ -9,7 +9,8 @@ import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/p
 import { parseFechaInput } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
-import { ventaSchema, esVentaEditable, type VentaInput } from "@/lib/validation/venta";
+import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
+import { saldoConcesion } from "@/lib/services/concesion";
 import type { TipoVenta } from "@prisma/client";
 
 type VentaData = ReturnType<typeof ventaSchema.parse>;
@@ -87,6 +88,7 @@ export async function crearVenta(input: VentaInput) {
         precioUnitario,
         precioTotal,
         montoCobrado: data.montoCobrado,
+        costoEnvio: data.costoEnvio,
         descripcion: data.descripcion ?? null,
         origen: "MANUAL",
         fecha: data.fecha,
@@ -125,34 +127,60 @@ export async function crearVenta(input: VentaInput) {
 
   revalidatePath("/ventas");
   revalidatePath("/dashboard");
+  revalidatePath("/reportes");
   if (data.clienteId) revalidatePath(`/clientes/${data.clienteId}`);
   redirect(`/ventas/${venta.id}`);
 }
 
-// Cualquier usuario puede editar (como gastos y clientes); solo borrar es del
-// admin principal. usuarioId no se toca y editar no notifica.
+// Cualquier usuario puede editar cualquier venta (como gastos y clientes);
+// solo borrar es del admin principal. usuarioId no se toca y editar no
+// notifica. Una venta de Tiendup se edita como una manual (el webhook no la
+// vuelve a sincronizar).
 //
 // mantenerPrecio: el formulario lo manda si no se tocaron cliente, cantidad
 // ni tramo. Entonces se conserva el precio guardado (y su lista/tramo) en vez
 // de recalcularlo con la lista de hoy, que puede haber cambiado desde la
 // venta. Solo se puede pisar a mano, igual que al crear.
+//
+// Liquidacion de concesion (tipo CONCESION): cliente y producto quedan fijos
+// (los de la concesion), el precio es el que se cobro (nunca sale de la
+// lista), no mueve stock (salio al entregar la concesion) y la cantidad no
+// puede pasar de lo que queda en concesion. La LiquidacionConcesion se
+// actualiza igual, para que el saldo de la concesion siga cerrando.
 export async function actualizarVenta(id: string, input: VentaInput, mantenerPrecio: boolean) {
   const data = ventaSchema.parse(input);
   await getCurrentUsuario();
 
   const anterior = await prisma.venta.findUniqueOrThrow({
     where: { id },
-    include: { entregas: true },
+    include: {
+      entregas: true,
+      liquidacionConcesion: {
+        include: { concesion: { include: { liquidaciones: true, devoluciones: true } } },
+      },
+    },
   });
-  if (!esVentaEditable(anterior)) {
-    throw new Error("Las ventas de Tiendup y las de liquidación de concesión no se editan.");
+
+  const esConcesion = anterior.tipo === "CONCESION";
+  if (esConcesion) {
+    data.clienteId = anterior.clienteId ?? undefined;
+    data.productoId = anterior.productoId;
+
+    const liquidacion = anterior.liquidacionConcesion;
+    if (liquidacion) {
+      const disponible = saldoConcesion(liquidacion.concesion) + liquidacion.cantidadVendida;
+      if (data.cantidad > disponible) {
+        throw new Error(`En esta concesión quedan ${disponible} unidades para liquidar.`);
+      }
+    }
   }
 
   const cliente = await buscarCliente(data.clienteId);
   const conservarPrecio =
-    mantenerPrecio &&
-    (data.clienteId ?? null) === anterior.clienteId &&
-    data.cantidad === anterior.cantidad;
+    esConcesion ||
+    (mantenerPrecio &&
+      (data.clienteId ?? null) === anterior.clienteId &&
+      data.cantidad === anterior.cantidad);
 
   const precio = conservarPrecio
     ? {
@@ -194,21 +222,30 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
     data.productoId === anterior.productoId ? data.cantidad - anterior.cantidad : data.cantidad;
 
   await prisma.$transaction(async (tx) => {
-    await tx.producto.update({
-      where: { id: anterior.productoId },
-      data: { stockActual: { increment: anterior.cantidad } },
-    });
-    const producto = await tx.producto.update({
-      where: { id: data.productoId },
-      data: { stockActual: { decrement: data.cantidad } },
-    });
-    // Solo se frena si la edicion pide unidades que no hay. Un stock que ya
-    // estaba en negativo (ver webhook de Tiendup) no impide corregir la
-    // fecha o el precio de una venta.
-    if (consumoExtra > 0 && producto.stockActual < 0) {
-      throw new Error(
-        `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual + data.cantidad}).`,
-      );
+    if (!esConcesion) {
+      await tx.producto.update({
+        where: { id: anterior.productoId },
+        data: { stockActual: { increment: anterior.cantidad } },
+      });
+      const producto = await tx.producto.update({
+        where: { id: data.productoId },
+        data: { stockActual: { decrement: data.cantidad } },
+      });
+      // Solo se frena si la edicion pide unidades que no hay. Un stock que ya
+      // estaba en negativo (ver webhook de Tiendup) no impide corregir la
+      // fecha o el precio de una venta.
+      if (consumoExtra > 0 && producto.stockActual < 0) {
+        throw new Error(
+          `Stock insuficiente de "${producto.nombre}" (disponible: ${producto.stockActual + data.cantidad}).`,
+        );
+      }
+    }
+
+    if (anterior.liquidacionConcesion) {
+      await tx.liquidacionConcesion.update({
+        where: { id: anterior.liquidacionConcesion.id },
+        data: { cantidadVendida: data.cantidad, montoCobrado: data.montoCobrado, fecha: data.fecha },
+      });
     }
 
     if (estabaEntregada && entregaUnica) {
@@ -238,6 +275,7 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
         precioUnitario: precio.precioUnitario,
         precioTotal,
         montoCobrado: data.montoCobrado,
+        costoEnvio: data.costoEnvio,
         fecha: data.fecha,
       },
     });
@@ -248,6 +286,7 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
   revalidatePath("/dashboard");
   revalidatePath("/reportes");
   revalidatePath("/productos");
+  if (esConcesion) revalidatePath("/concesion");
   for (const clienteId of new Set([anterior.clienteId, data.clienteId ?? null])) {
     if (clienteId) revalidatePath(`/clientes/${clienteId}`);
   }

@@ -1,12 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
-import { EmptyState } from "@/components/ui/empty-state";
 import { VentaForm } from "@/components/ventas/venta-form";
 import { fechaInputValue } from "@/lib/date";
 import { nombreCliente } from "@/lib/format";
-import { esVentaEditable } from "@/lib/validation/venta";
+import { saldoConcesion } from "@/lib/services/concesion";
 
 export default async function EditarVentaPage({
   params,
@@ -17,27 +15,19 @@ export default async function EditarVentaPage({
 
   const venta = await prisma.venta.findUnique({
     where: { id },
-    include: { cliente: true, evento: true },
+    include: {
+      cliente: true,
+      evento: true,
+      liquidacionConcesion: {
+        include: { concesion: { include: { liquidaciones: true, devoluciones: true } } },
+      },
+    },
   });
   if (!venta) notFound();
 
-  if (!esVentaEditable(venta)) {
-    return (
-      <div>
-        <PageHeader title="Editar venta" />
-        <EmptyState
-          title="Esta venta no se puede editar"
-          subtitle="Las ventas de Tiendup y las de liquidación de concesión vienen de su origen; editarlas acá las desincronizaría."
-        />
-        <Link href={`/ventas/${id}`} className="btn-secondary text-sm mt-4 inline-flex">
-          ← Volver a la venta
-        </Link>
-      </div>
-    );
-  }
-
   const [clientes, productos, eventos] = await Promise.all([
-    // Los mismos que ofrece el alta, mas el cliente actual de la venta.
+    // Los mismos que ofrece el alta, mas el cliente actual de la venta (una
+    // venta de Tiendup tiene un cliente minorista).
     prisma.cliente.findMany({
       where: {
         OR: [
@@ -59,6 +49,18 @@ export default async function EditarVentaPage({
     opcionesEventos.push({ id: venta.evento.id, nombre: venta.evento.nombre });
   }
 
+  // Liquidacion de concesion: tope de unidades = lo que queda en la
+  // concesion + lo que ya liquida esta venta.
+  const liquidacion = venta.liquidacionConcesion;
+  const concesion =
+    venta.tipo === "CONCESION"
+      ? {
+          maxCantidad: liquidacion
+            ? saldoConcesion(liquidacion.concesion) + liquidacion.cantidadVendida
+            : null,
+        }
+      : null;
+
   return (
     <div>
       <PageHeader
@@ -71,14 +73,17 @@ export default async function EditarVentaPage({
         eventos={opcionesEventos}
         venta={{
           id: venta.id,
+          tipo: venta.tipo,
           clienteId: venta.clienteId,
           productoId: venta.productoId,
           cantidad: venta.cantidad,
           precioUnitario: venta.precioUnitario.toNumber(),
           precioTotal: venta.precioTotal.toNumber(),
           montoCobrado: venta.montoCobrado.toNumber(),
+          costoEnvio: venta.costoEnvio.toNumber(),
           eventoId: venta.eventoId,
           fecha: fechaInputValue(venta.fecha),
+          concesion,
         }}
       />
     </div>

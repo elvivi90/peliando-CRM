@@ -9,7 +9,6 @@ import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
-import { esVentaEditable } from "@/lib/validation/venta";
 import { OrdenTiendup, OrdenTiendupCargando } from "@/components/ventas/orden-tiendup";
 
 export default async function VentaDetailPage({
@@ -44,11 +43,9 @@ export default async function VentaDetailPage({
         action={
           <div className="flex items-center gap-2">
             <TipoBadge tipo={venta.tipo} />
-            {esVentaEditable(venta) && (
-              <Link href={`/ventas/${venta.id}/editar`} className="btn-secondary text-sm">
-                Editar
-              </Link>
-            )}
+            <Link href={`/ventas/${venta.id}/editar`} className="btn-secondary text-sm">
+              Editar
+            </Link>
             {puedeEliminar && (
               <BotonEliminar entidad="esta venta" onEliminar={eliminarVenta.bind(null, venta.id)} />
             )}
@@ -75,6 +72,10 @@ export default async function VentaDetailPage({
         <Info label="Precio unitario" value={formatMoney(venta.precioUnitario)} />
         <Info label="Precio total" value={formatMoney(venta.precioTotal)} />
         <Info label="Cobrado" value={`${formatMoney(venta.montoCobrado)} / ${formatMoney(venta.precioTotal)}`} />
+        <Info
+          label="Costo de envío"
+          value={venta.costoEnvio.gt(0) ? formatMoney(venta.costoEnvio) : "—"}
+        />
         <Info label="Evento" value={venta.evento?.nombre ?? "—"} />
         <Info label="Cargada por" value={venta.usuario.nombre} />
         <Info label="Origen" value={venta.origen === "WEBHOOK_TIENDUP" ? "Tiendup (automática)" : "Manual"} />

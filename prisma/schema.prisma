@@ -210,6 +210,9 @@ model Venta {
   // Mirror de cantidadEntregada para pagos: permite calcular
   // saldo_pendiente_cobro en cuenta corriente sin una entidad Pago separada.
   montoCobrado      Decimal     @default(0) @db.Decimal(12, 2)
+  // Lo que le cuesta a Peliando enviar esta venta (lo paga el negocio, no
+  // el cliente): no cambia el precio y en Reportes suma como gasto del mes.
+  costoEnvio        Decimal     @default(0) @db.Decimal(12, 2)
   descripcion       String?
   origen            OrigenVenta @default(MANUAL)
   // Id de la orden en Tiendup (solo origen WEBHOOK_TIENDUP). El @unique

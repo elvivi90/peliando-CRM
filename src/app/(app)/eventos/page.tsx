@@ -32,7 +32,9 @@ export default async function EventosPage() {
               (s, v) => s.plus(v.precioTotal),
               new Prisma.Decimal(0),
             );
-            const totalGastos = ev.gastos.reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0));
+            const totalGastos = ev.gastos
+              .reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0))
+              .plus(ev.ventas.reduce((s, v) => s.plus(v.costoEnvio), new Prisma.Decimal(0)));
             const neto = totalVentas.minus(totalGastos);
 
             return (
