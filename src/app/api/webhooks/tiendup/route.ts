@@ -110,7 +110,6 @@ export async function POST(request: NextRequest) {
   // tiendupOrderId (ver el catch del create mas abajo), no de este chequeo:
   // si dos entregas del mismo evento llegan casi juntas, las dos podrian
   // pasar este find antes de que la primera termine de insertar.
-  const descripcion = `Tiendup orden #${orderId}`;
   const yaExiste = await prisma.venta.findFirst({ where: { tiendupOrderId: orderId } });
   if (yaExiste) {
     return NextResponse.json({ ok: true, ventaId: yaExiste.id, duplicado: true });
@@ -170,6 +169,10 @@ export async function POST(request: NextRequest) {
       create: { authId: SISTEMA_AUTH_ID, nombre: "Tiendup (automático)", email: "tiendup@sistema.local" },
     }),
   ]);
+
+  // `number` es el numero de orden que ven el equipo y el cliente en Tiendup
+  // (#54); `orderId` es el id interno de la API (#5465469).
+  const descripcion = `Tiendup orden #${order.number ?? orderId}`;
 
   // creation_date viene en hora de Argentina (ver lib/date.ts).
   const fecha = parseFechaHoraArgentina(order.creation_date);
