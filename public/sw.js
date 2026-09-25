@@ -26,7 +26,9 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(data.titulo || "CRM Peliando", {
       body: data.cuerpo || "",
       icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
+      // Android pinta el badge solo con el canal alfa: tiene que ser una
+      // silueta transparente (ver scripts/generate-badge.py), no el icono.
+      badge: "/icons/badge-96.png",
       tag: data.tag,
       data: { url: data.url || "/dashboard" },
     }),
