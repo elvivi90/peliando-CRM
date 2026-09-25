@@ -16,7 +16,8 @@ export async function getResumenMes(anio: number, mes: number) {
 
   const [ventas, gastos] = await Promise.all([
     prisma.venta.findMany({ where: { fecha: { gte: inicio, lte: fin } } }),
-    prisma.gasto.findMany({ where: { fecha: { gte: inicio, lte: fin } } }),
+    // La inversion de capital no es gasto del mes (ver getResumenInversion).
+    prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: inicio, lte: fin } } }),
   ]);
 
   const totalVentas = ventas.reduce((s, v) => s.plus(v.precioTotal), new Prisma.Decimal(0));
@@ -72,4 +73,40 @@ export async function getComparacionMeses(cantidadMeses = 6) {
   );
 
   return resultados;
+}
+
+// Historico, sin filtro de mes: una tirada de cajas se paga una vez y se
+// vende durante muchos meses. El costo unitario promedio pondera por unidades
+// (total invertido / total de unidades), asi una tirada grande pesa mas que
+// una chica.
+export async function getResumenInversion() {
+  const [inversion, produccion] = await Promise.all([
+    prisma.gasto.aggregate({ where: { tipo: "INVERSION" }, _sum: { monto: true } }),
+    prisma.gasto.aggregate({
+      where: { tipo: "INVERSION", unidadesGeneradas: { not: null } },
+      _sum: { monto: true, unidadesGeneradas: true },
+    }),
+  ]);
+
+  const unidadesProducidas = produccion._sum.unidadesGeneradas ?? 0;
+  const costoUnitarioPromedio =
+    unidadesProducidas > 0
+      ? (produccion._sum.monto ?? new Prisma.Decimal(0)).div(unidadesProducidas)
+      : null;
+
+  return {
+    inversionAcumulada: inversion._sum.monto ?? new Prisma.Decimal(0),
+    costoUnitarioPromedio,
+  };
+}
+
+// Margen por unidad de un mes: precio promedio cobrado por unidad en ese mes
+// (todas las ventas: minorista, mayorista, distribuidor y concesion) menos el
+// costo unitario promedio historico de produccion.
+export function margenReal(
+  resumenMes: { totalVentas: Prisma.Decimal; unidadesVendidas: number },
+  costoUnitarioPromedio: Prisma.Decimal | null,
+) {
+  if (!costoUnitarioPromedio || resumenMes.unidadesVendidas === 0) return null;
+  return resumenMes.totalVentas.div(resumenMes.unidadesVendidas).minus(costoUnitarioPromedio);
 }

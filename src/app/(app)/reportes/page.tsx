@@ -3,7 +3,12 @@ import { StatCard } from "@/components/ui/stat-card";
 import { VentasChart } from "@/components/dashboard/ventas-chart";
 import { ComparacionChart } from "@/components/dashboard/comparacion-chart";
 import { formatMoney } from "@/lib/format";
-import { getResumenMes, getComparacionMeses } from "@/lib/services/reportes";
+import {
+  getResumenMes,
+  getComparacionMeses,
+  getResumenInversion,
+  margenReal,
+} from "@/lib/services/reportes";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -20,10 +25,13 @@ export default async function ReportesPage({
   const anioSel = anio ? Number(anio) : ahora.getFullYear();
   const mesSel = mes ? Number(mes) : ahora.getMonth() + 1;
 
-  const [resumen, comparacion] = await Promise.all([
+  const [resumen, comparacion, inversion] = await Promise.all([
     getResumenMes(anioSel, mesSel),
     getComparacionMeses(6),
+    getResumenInversion(),
   ]);
+  const costoUnitario = inversion.costoUnitarioPromedio;
+  const margen = margenReal(resumen, costoUnitario);
 
   const opcionesMes = Array.from({ length: 12 }, (_, i) => i + 1);
   const opcionesAnio = [ahora.getFullYear() - 1, ahora.getFullYear(), ahora.getFullYear() + 1];
@@ -55,9 +63,41 @@ export default async function ReportesPage({
 
       <div className="flex flex-wrap gap-4">
         <StatCard label="Total vendido" value={formatMoney(resumen.totalVentas)} stripe="amarillo" />
-        <StatCard label="Total gastos" value={formatMoney(resumen.totalGastos)} stripe="rosa" />
-        <StatCard label="Resultado neto" value={formatMoney(resumen.neto)} stripe="navy" />
+        <StatCard
+          label="Total gastos"
+          value={formatMoney(resumen.totalGastos)}
+          hint="solo operativos"
+          stripe="rosa"
+        />
+        <StatCard
+          label="Resultado neto"
+          value={formatMoney(resumen.neto)}
+          hint="sin distorsión por inversión"
+          stripe="navy"
+        />
         <StatCard label="Unidades vendidas" value={String(resumen.unidadesVendidas)} stripe="azul" />
+      </div>
+
+      <div className="flex flex-wrap gap-4">
+        <StatCard
+          label="Inversión acumulada"
+          value={formatMoney(inversion.inversionAcumulada)}
+          hint="histórico, no mensual"
+          stripe="rosa"
+        />
+        <StatCard
+          label="Costo unitario promedio"
+          value={costoUnitario ? `${formatMoney(costoUnitario)} c/u` : "—"}
+          hint={costoUnitario ? "inversión ÷ unidades producidas" : "sin tiradas con unidades cargadas"}
+          stripe="rosa"
+        />
+        <StatCard
+          label={`Margen real (${MESES[mesSel - 1].slice(0, 3)} ${anioSel})`}
+          value={margen ? `${formatMoney(margen)} c/u` : "—"}
+          hint="precio venta − costo unitario"
+          stripe="amarillo"
+          hintColor={margen?.lt(0) ? "rosa" : undefined}
+        />
       </div>
 
       <div className="card-chunky p-5 lg:p-6">

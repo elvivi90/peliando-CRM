@@ -34,3 +34,16 @@ export function EstadoBadge({ estado }: { estado: string }) {
     </span>
   );
 }
+
+export function TipoGastoBadge({ tipo }: { tipo: string }) {
+  const inversion = tipo === "INVERSION";
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wide ${
+        inversion ? "bg-rosa text-white" : "bg-amarillo text-navy"
+      }`}
+    >
+      {inversion ? "Inversión" : "Operativo"}
+    </span>
+  );
+}

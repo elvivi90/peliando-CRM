@@ -48,6 +48,13 @@ enum CategoriaGasto {
   OTROS
 }
 
+// INVERSION es capital (ej: producir una tirada nueva de cajas): no entra en
+// el total de gastos ni en el resultado neto del mes (ver services/reportes).
+enum TipoGasto {
+  OPERATIVO
+  INVERSION
+}
+
 model Usuario {
   id        String   @id @default(uuid())
   // id del usuario en Supabase Auth
@@ -281,6 +288,7 @@ model DevolucionConcesion {
 
 model Gasto {
   id        String         @id @default(uuid())
+  tipo      TipoGasto      @default(OPERATIVO)
   categoria CategoriaGasto
   concepto  String
   monto     Decimal        @db.Decimal(12, 2)
@@ -291,7 +299,13 @@ model Gasto {
   usuario   Usuario        @relation(fields: [usuarioId], references: [id])
   createdAt DateTime       @default(now())
 
+  // Solo INVERSION + MARKETING_PRODUCCION. costoUnitario lo calcula el
+  // servidor (monto / unidadesGeneradas); nunca viene del formulario.
+  unidadesGeneradas Int?
+  costoUnitario     Decimal? @db.Decimal(12, 2)
+
   @@index([fecha])
   @@index([categoria])
+  @@index([tipo])
   @@map("gastos")
 }

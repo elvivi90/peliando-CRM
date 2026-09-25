@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
+import { TipoGastoBadge } from "@/components/ui/badge";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarGasto } from "@/app/(app)/gastos/actions";
@@ -28,7 +29,7 @@ export default async function GastosPage() {
     <div>
       <PageHeader
         title="Gastos"
-        subtitle="Viáticos operativos: nafta, peajes, comida, carteles, producción."
+        subtitle="Viáticos operativos (nafta, peajes, comida, carteles) e inversión en producción."
         action={
           <Link href="/gastos/nuevo" className="btn-primary text-sm">
             + Nuevo gasto
@@ -46,6 +47,7 @@ export default async function GastosPage() {
                 <tr className="border-b-2 border-navy/15 text-left">
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Fecha</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Concepto</th>
+                  <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Tipo</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Categoría</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Evento</th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase text-navy/60">Monto</th>
@@ -57,6 +59,9 @@ export default async function GastosPage() {
                   <tr key={g.id} className="border-b border-navy/10 last:border-0">
                     <td className="px-5 py-3 text-navy/70 whitespace-nowrap">{formatDate(g.fecha)}</td>
                     <td className="px-5 py-3 font-semibold">{g.concepto}</td>
+                    <td className="px-5 py-3">
+                      <TipoGastoBadge tipo={g.tipo} />
+                    </td>
                     <td className="px-5 py-3 text-navy/60">{CATEGORIA_LABEL[g.categoria]}</td>
                     <td className="px-5 py-3 text-navy/60">{g.evento?.nombre ?? "—"}</td>
                     <td className="px-5 py-3 font-bold whitespace-nowrap">{formatMoney(g.monto)}</td>
