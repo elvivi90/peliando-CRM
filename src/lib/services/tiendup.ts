@@ -74,6 +74,25 @@ export type TiendupOrder = {
   } | null;
 };
 
+/**
+ * La venta de una orden cuenta como entregada cuando la orden esta finalizada
+ * ("closed") o Tiendup marca el envio como "shipped" (el equipo lo marca al
+ * despachar o cuando el cliente retira en sucursal), o cuando no lleva envio.
+ * En las ordenes reales relevadas, "open" coincide siempre con "unshipped".
+ * Si no, queda pendiente de entrega y la revisa el cron diario
+ * (/api/cron/entregas-tiendup).
+ */
+export function envioCompletado(order: Pick<TiendupOrder, "status" | "shipping">) {
+  const envio = order.shipping;
+  return (
+    order.status === "closed" ||
+    !envio ||
+    !envio.type ||
+    envio.type === "none" ||
+    envio.status === "shipped"
+  );
+}
+
 export async function fetchTiendupOrder(
   orderId: number,
   opciones: { timeoutMs?: number } = {},

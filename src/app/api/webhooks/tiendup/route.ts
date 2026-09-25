@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { parseFechaHoraArgentina } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
-import { fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
+import { envioCompletado, fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 
 /**
  * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
@@ -177,6 +177,12 @@ export async function POST(request: NextRequest) {
   // creation_date viene en hora de Argentina (ver lib/date.ts).
   const fecha = parseFechaHoraArgentina(order.creation_date);
 
+  // Si todavia no se despacho (lo normal al confirmarse el pago), la venta
+  // queda pendiente de entrega y la completa el cron diario cuando Tiendup
+  // la marque como enviada. El stock se descuenta igual ahora, como en una
+  // venta manual con entrega pendiente.
+  const entregada = envioCompletado(order);
+
   try {
     const venta = await prisma.$transaction(async (tx) => {
       const nuevaVenta = await tx.venta.create({
@@ -186,7 +192,7 @@ export async function POST(request: NextRequest) {
           usuarioId: usuarioSistema.id,
           tipo: "MINORISTA",
           cantidad,
-          cantidadEntregada: cantidad,
+          cantidadEntregada: entregada ? cantidad : 0,
           precioUnitario,
           precioTotal,
           montoCobrado: precioTotal,
@@ -197,7 +203,9 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      await tx.entrega.create({ data: { ventaId: nuevaVenta.id, cantidad, fecha } });
+      if (entregada) {
+        await tx.entrega.create({ data: { ventaId: nuevaVenta.id, cantidad, fecha } });
+      }
       await tx.producto.update({
         where: { id: producto.id },
         data: { stockActual: { decrement: cantidad } },
