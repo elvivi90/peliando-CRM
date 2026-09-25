@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
@@ -9,6 +10,7 @@ import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
 import { esVentaEditable } from "@/lib/validation/venta";
+import { OrdenTiendup, OrdenTiendupCargando } from "@/components/ventas/orden-tiendup";
 
 export default async function VentaDetailPage({
   params,
@@ -82,6 +84,12 @@ export default async function VentaDetailPage({
           </div>
         )}
       </div>
+
+      {venta.tiendupOrderId !== null && (
+        <Suspense fallback={<OrdenTiendupCargando orderId={venta.tiendupOrderId} />}>
+          <OrdenTiendup orderId={venta.tiendupOrderId} />
+        </Suspense>
+      )}
 
       <EntregaCobroPanel
         ventaId={venta.id}

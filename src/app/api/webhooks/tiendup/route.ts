@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { parseFechaHoraArgentina } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
+import { fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 
 /**
  * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
@@ -35,28 +36,7 @@ import { enviarNotificacion } from "@/lib/services/notificaciones";
  * la orden (`object: "order"`), por analogia; a confirmar con un evento real.
  */
 
-const BUSINESS_SLUG = process.env.TIENDUP_BUSINESS_SLUG || "peliando";
 const SISTEMA_AUTH_ID = "sistema-tiendup";
-
-type TiendupOrderItem = {
-  product_id?: number;
-  ecommerce_type?: string;
-  quantity?: number;
-};
-
-type TiendupOrder = {
-  id: number;
-  hash: string;
-  creation_date: string;
-  currency?: string;
-  total_amount: string;
-  items: TiendupOrderItem[];
-  customer: {
-    email: string;
-    name?: string;
-    last_name?: string;
-  };
-};
 
 function verificarFirma(rawBody: string, signatureHeader: string | null, secret: string) {
   if (!signatureHeader) return false;
@@ -82,19 +62,6 @@ function extraerOrderId(body: unknown): number | null {
     reference?.id ?? data?.id ?? data?.order_id ?? b.order_id ?? b.resource_id;
   const n = Number(candidato);
   return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-async function fetchOrder(orderId: number, apiKey: string): Promise<TiendupOrder> {
-  const res = await fetch(`https://${BUSINESS_SLUG}.public-api.tiendup.com/orders/${orderId}`, {
-    headers: { "X-API-Key": apiKey },
-  });
-
-  if (!res.ok) {
-    throw new Error(`No se pudo obtener la orden #${orderId} de Tiendup (HTTP ${res.status})`);
-  }
-
-  const json = await res.json();
-  return json.data as TiendupOrder;
 }
 
 export async function POST(request: NextRequest) {
@@ -151,7 +118,7 @@ export async function POST(request: NextRequest) {
 
   let order: TiendupOrder;
   try {
-    order = await fetchOrder(orderId, apiKey);
+    order = await fetchTiendupOrder(orderId);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Error al consultar la orden" },
