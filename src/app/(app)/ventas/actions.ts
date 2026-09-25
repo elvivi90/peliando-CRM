@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario, requireAdminPrincipal } from "@/lib/auth";
 import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/pricing";
 import { parseFechaInput } from "@/lib/date";
+import { formatMoney, nombreCliente } from "@/lib/format";
+import { enviarNotificacion } from "@/lib/services/notificaciones";
 import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
 import type { TipoVenta } from "@prisma/client";
 
@@ -96,6 +99,18 @@ export async function crearVenta(input: VentaInput) {
 
     return nuevaVenta;
   });
+
+  // Al resto del equipo; quien la cargo ya sabe que la cargo.
+  after(() =>
+    enviarNotificacion(
+      {
+        titulo: `Nueva venta de ${usuario.nombre}`,
+        cuerpo: `${data.cantidad} × ${producto.nombre} · ${nombreCliente(cliente)} · ${formatMoney(precioTotal)}`,
+        url: `/ventas/${venta.id}`,
+      },
+      { excluirUsuarioId: usuario.id },
+    ),
+  );
 
   revalidatePath("/ventas");
   revalidatePath("/dashboard");

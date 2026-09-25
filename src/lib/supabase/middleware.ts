@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/webhooks"];
+// /api/cron se protege con CRON_SECRET en la propia ruta, no con sesion.
+const PUBLIC_PATHS = ["/login", "/api/webhooks", "/api/cron"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));

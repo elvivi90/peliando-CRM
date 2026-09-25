@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MAS_NAV } from "@/components/layout/nav-items";
 import { NavIcon } from "@/components/layout/nav-icon";
 import { PageHeader } from "@/components/ui/page-header";
+import { ActivarNotificaciones } from "@/components/notificaciones/activar-notificaciones";
 
 export default function MasPage() {
   return (
@@ -20,6 +21,7 @@ export default function MasPage() {
             {item.label}
           </Link>
         ))}
+        <ActivarNotificaciones />
       </div>
     </div>
   );

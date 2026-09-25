@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseFechaHoraArgentina } from "@/lib/date";
+import { formatMoney, nombreCliente } from "@/lib/format";
+import { enviarNotificacion } from "@/lib/services/notificaciones";
 
 /**
  * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
@@ -233,6 +235,16 @@ export async function POST(request: NextRequest) {
 
       return nuevaVenta;
     });
+
+    // Solo aca y no en los caminos de duplicado: un reintento de Tiendup no
+    // tiene que volver a avisar la misma venta.
+    after(() =>
+      enviarNotificacion({
+        titulo: "Venta en Tiendup",
+        cuerpo: `${nombreCliente(cliente)} · ${cantidad} u. · ${formatMoney(precioTotal)}`,
+        url: `/ventas/${venta.id}`,
+      }),
+    );
 
     return NextResponse.json({ ok: true, ventaId: venta.id }, { status: 201 });
   } catch (err) {

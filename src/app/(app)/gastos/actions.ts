@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario, requireAdminPrincipal } from "@/lib/auth";
 import { parseFechaInput } from "@/lib/date";
+import { formatMoney } from "@/lib/format";
+import { enviarNotificacion } from "@/lib/services/notificaciones";
 
 const gastoSchema = z.object({
   categoria: z.enum(["TRANSPORTE", "COMIDA", "MARKETING_PRODUCCION", "OTROS"]),
@@ -38,6 +41,17 @@ export async function crearGasto(input: {
       usuarioId: usuario.id,
     },
   });
+
+  after(() =>
+    enviarNotificacion(
+      {
+        titulo: `Nuevo gasto de ${usuario.nombre}`,
+        cuerpo: `${data.concepto} · ${formatMoney(data.monto)}`,
+        url: "/gastos",
+      },
+      { excluirUsuarioId: usuario.id },
+    ),
+  );
 
   revalidatePath("/gastos");
   revalidatePath("/dashboard");

@@ -1,11 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario } from "@/lib/auth";
 import { saldoConcesion } from "@/lib/services/concesion";
 import { parseFechaInput } from "@/lib/date";
+import { formatMoney, nombreCliente } from "@/lib/format";
+import { enviarNotificacion } from "@/lib/services/notificaciones";
 
 const entregaSchema = z.object({
   clienteId: z.string().min(1, "Elegí un cliente"),
@@ -80,8 +83,8 @@ export async function crearLiquidacion(input: {
     throw new Error(`Solo quedan ${saldo} unidades en concesión sin liquidar ni devolver.`);
   }
 
-  await prisma.$transaction(async (tx) => {
-    const venta = await tx.venta.create({
+  const venta = await prisma.$transaction(async (tx) => {
+    const nuevaVenta = await tx.venta.create({
       data: {
         clienteId: concesion.clienteId,
         productoId: concesion.productoId,
@@ -104,10 +107,25 @@ export async function crearLiquidacion(input: {
         cantidadVendida: data.cantidadVendida,
         montoCobrado: data.montoCobrado,
         fecha: parseFechaInput(data.fecha),
-        ventaId: venta.id,
+        ventaId: nuevaVenta.id,
       },
     });
+
+    return nuevaVenta;
   });
+
+  // La liquidacion genera una venta real: se avisa igual que una venta
+  // cargada a mano (al resto del equipo).
+  after(() =>
+    enviarNotificacion(
+      {
+        titulo: `Liquidación de concesión de ${usuario.nombre}`,
+        cuerpo: `${data.cantidadVendida} × ${concesion.producto.nombre} · ${nombreCliente(concesion.cliente)} · ${formatMoney(data.montoCobrado)}`,
+        url: `/ventas/${venta.id}`,
+      },
+      { excluirUsuarioId: usuario.id },
+    ),
+  );
 
   revalidatePath("/concesion");
   revalidatePath("/ventas");

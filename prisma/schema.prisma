@@ -60,7 +60,25 @@ model Usuario {
   gastos      Gasto[]
   comentarios Comentario[]
 
+  suscripcionesPush SuscripcionPush[]
+
   @@map("usuarios")
+}
+
+// Un registro por celular/navegador donde el usuario activo las
+// notificaciones (un mismo usuario puede tener varios). Los datos vienen de
+// PushSubscription del navegador; si el servicio de push responde que la
+// suscripcion ya no existe (404/410), se borra al intentar enviar.
+model SuscripcionPush {
+  id        String   @id @default(uuid())
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@map("suscripciones_push")
 }
 
 model Cliente {
