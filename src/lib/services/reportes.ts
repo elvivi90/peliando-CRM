@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import {
   startOfMonth,
   endOfMonth,
+  startOfYear,
+  endOfYear,
   eachDayOfInterval,
   format,
   subMonths,
@@ -10,24 +12,34 @@ import {
 } from "date-fns";
 import { es } from "date-fns/locale";
 
-export async function getResumenMes(anio: number, mes: number) {
-  const inicio = startOfMonth(new Date(anio, mes - 1, 1));
-  const fin = endOfMonth(inicio);
+type VentaPeriodo = { precioTotal: Prisma.Decimal; costoEnvio: Prisma.Decimal; cantidad: number };
+type GastoPeriodo = { monto: Prisma.Decimal };
 
-  const [ventas, gastos] = await Promise.all([
-    prisma.venta.findMany({ where: { fecha: { gte: inicio, lte: fin } } }),
-    // La inversion de capital no es gasto del mes (ver getResumenInversion).
-    prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: inicio, lte: fin } } }),
-  ]);
-
+// Totales de un conjunto de ventas y gastos (operativos) de un periodo.
+// Gastos = gastos operativos + lo que costo enviar esas ventas
+// (Venta.costoEnvio, lo paga Peliando). La inversion de capital nunca entra
+// (ver getResumenInversion).
+function totales(ventas: VentaPeriodo[], gastos: GastoPeriodo[]) {
   const totalVentas = ventas.reduce((s, v) => s.plus(v.precioTotal), new Prisma.Decimal(0));
-  // Gastos del mes = gastos operativos + lo que costo enviar las ventas del
-  // mes (Venta.costoEnvio, lo paga Peliando).
   const totalEnvios = ventas.reduce((s, v) => s.plus(v.costoEnvio), new Prisma.Decimal(0));
   const totalGastos = gastos
     .reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0))
     .plus(totalEnvios);
-  const unidadesVendidas = ventas.reduce((s, v) => s + v.cantidad, 0);
+  return {
+    totalVentas,
+    totalGastos,
+    totalEnvios,
+    neto: totalVentas.minus(totalGastos),
+    unidadesVendidas: ventas.reduce((s, v) => s + v.cantidad, 0),
+    cantidadVentas: ventas.length,
+  };
+}
+
+async function resumirPeriodo(inicio: Date, fin: Date) {
+  const [ventas, gastos] = await Promise.all([
+    prisma.venta.findMany({ where: { fecha: { gte: inicio, lte: fin } } }),
+    prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: inicio, lte: fin } } }),
+  ]);
 
   const totalPorTipo = {
     MINORISTA: new Prisma.Decimal(0),
@@ -39,6 +51,14 @@ export async function getResumenMes(anio: number, mes: number) {
     totalPorTipo[v.tipo] = totalPorTipo[v.tipo].plus(v.precioTotal);
   }
 
+  return { ventas, gastos, resumen: { ...totales(ventas, gastos), totalPorTipo } };
+}
+
+export async function getResumenMes(anio: number, mes: number) {
+  const inicio = startOfMonth(new Date(anio, mes - 1, 1));
+  const fin = endOfMonth(inicio);
+  const { ventas, resumen } = await resumirPeriodo(inicio, fin);
+
   const dias = eachDayOfInterval({ start: inicio, end: fin });
   const ventasPorDia = dias.map((dia) => {
     const key = format(dia, "yyyy-MM-dd");
@@ -48,16 +68,39 @@ export async function getResumenMes(anio: number, mes: number) {
     return { dia: format(dia, "dd/MM"), total: totalDia.toNumber() };
   });
 
-  return {
-    totalVentas,
-    totalGastos,
-    totalEnvios,
-    neto: totalVentas.minus(totalGastos),
-    unidadesVendidas,
-    totalPorTipo,
-    ventasPorDia,
-    cantidadVentas: ventas.length,
-  };
+  return { ...resumen, ventasPorDia };
+}
+
+// Reporte anual: los mismos totales sobre el año entero y el detalle mes a
+// mes (para el grafico y la tabla), calculado sobre una sola consulta.
+export async function getResumenAnio(anio: number) {
+  const inicio = startOfYear(new Date(anio, 0, 1));
+  const fin = endOfYear(inicio);
+  const { ventas, gastos, resumen } = await resumirPeriodo(inicio, fin);
+
+  const porMes = Array.from({ length: 12 }, (_, mes) => {
+    const delMes = totales(
+      ventas.filter((v) => v.fecha.getMonth() === mes),
+      gastos.filter((g) => g.fecha.getMonth() === mes),
+    );
+    return {
+      mes: format(new Date(anio, mes, 1), "MMM", { locale: es }),
+      ventas: delMes.totalVentas.toNumber(),
+      gastos: delMes.totalGastos.toNumber(),
+      neto: delMes.neto.toNumber(),
+      unidades: delMes.unidadesVendidas,
+    };
+  });
+
+  return { ...resumen, porMes };
+}
+
+// Años para el selector: desde la primera venta hasta el actual.
+export async function getAniosConVentas() {
+  const primera = await prisma.venta.findFirst({ orderBy: { fecha: "asc" }, select: { fecha: true } });
+  const actual = new Date().getFullYear();
+  const desde = Math.min(primera?.fecha.getFullYear() ?? actual, actual);
+  return Array.from({ length: actual - desde + 1 }, (_, i) => desde + i);
 }
 
 export async function getComparacionMeses(cantidadMeses = 6) {
@@ -106,9 +149,10 @@ export async function getResumenInversion() {
   };
 }
 
-// Margen por unidad de un mes: precio promedio cobrado por unidad en ese mes
-// (todas las ventas: minorista, mayorista, distribuidor y concesion) menos el
-// costo unitario promedio historico de produccion.
+// Margen por unidad de un periodo (mes o año): precio promedio cobrado por
+// unidad en ese periodo
+// (todas las ventas: minorista, mayorista, distribuidor y concesion) menos
+// el costo unitario promedio historico de produccion.
 export function margenReal(
   resumenMes: { totalVentas: Prisma.Decimal; unidadesVendidas: number },
   costoUnitarioPromedio: Prisma.Decimal | null,

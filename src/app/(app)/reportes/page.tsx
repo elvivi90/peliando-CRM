@@ -5,8 +5,10 @@ import { ComparacionChart } from "@/components/dashboard/comparacion-chart";
 import { formatMoney } from "@/lib/format";
 import {
   getResumenMes,
+  getResumenAnio,
   getComparacionMeses,
   getResumenInversion,
+  getAniosConVentas,
   margenReal,
 } from "@/lib/services/reportes";
 
@@ -18,47 +20,72 @@ const MESES = [
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ anio?: string; mes?: string }>;
+  searchParams: Promise<{ periodo?: string; anio?: string; mes?: string }>;
 }) {
-  const { anio, mes } = await searchParams;
+  const { periodo, anio, mes } = await searchParams;
+  const anual = periodo === "anio";
   const ahora = new Date();
   const anioSel = anio ? Number(anio) : ahora.getFullYear();
   const mesSel = mes ? Number(mes) : ahora.getMonth() + 1;
 
-  const [resumen, comparacion, inversion] = await Promise.all([
-    getResumenMes(anioSel, mesSel),
-    getComparacionMeses(6),
+  const [mensual, anualResumen, comparacion, inversion, anios] = await Promise.all([
+    anual ? null : getResumenMes(anioSel, mesSel),
+    anual ? getResumenAnio(anioSel) : null,
+    anual ? null : getComparacionMeses(6),
     getResumenInversion(),
+    getAniosConVentas(),
   ]);
+  const resumen = (anual ? anualResumen : mensual)!;
   const costoUnitario = inversion.costoUnitarioPromedio;
   const margen = margenReal(resumen, costoUnitario);
+  const etiquetaPeriodo = anual ? String(anioSel) : `${MESES[mesSel - 1]} ${anioSel}`;
 
   const opcionesMes = Array.from({ length: 12 }, (_, i) => i + 1);
-  const opcionesAnio = [ahora.getFullYear() - 1, ahora.getFullYear(), ahora.getFullYear() + 1];
+  const opcionesAnio = anios.includes(anioSel) ? anios : [...anios, anioSel].sort();
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl lg:text-[28px] font-black tracking-tight">Reportes</h1>
-        <form className="flex gap-2" action="/reportes">
-          <select name="mes" defaultValue={mesSel} className="input-chunky text-sm py-2">
-            {opcionesMes.map((m) => (
-              <option key={m} value={m}>
-                {MESES[m - 1]}
-              </option>
-            ))}
-          </select>
-          <select name="anio" defaultValue={anioSel} className="input-chunky text-sm py-2">
-            {opcionesAnio.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="btn-secondary text-sm">
-            Ver
-          </button>
-        </form>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex rounded-xl border-2 border-navy overflow-hidden text-sm">
+            <Link
+              href={`/reportes?anio=${anioSel}&mes=${mesSel}`}
+              className={`px-4 py-2 ${anual ? "bg-tarjeta text-navy/50 font-bold" : "bg-amarillo font-black"}`}
+            >
+              Mensual
+            </Link>
+            <Link
+              href={`/reportes?periodo=anio&anio=${anioSel}`}
+              className={`px-4 py-2 ${anual ? "bg-amarillo font-black" : "bg-tarjeta text-navy/50 font-bold"}`}
+            >
+              Anual
+            </Link>
+          </div>
+          <form className="flex gap-2" action="/reportes">
+            {anual ? (
+              <input type="hidden" name="periodo" value="anio" />
+            ) : (
+              <select name="mes" defaultValue={mesSel} className="input-chunky text-sm py-2">
+                {opcionesMes.map((m) => (
+                  <option key={m} value={m}>
+                    {MESES[m - 1]}
+                  </option>
+                ))}
+              </select>
+            )}
+            <select name="anio" defaultValue={anioSel} className="input-chunky text-sm py-2">
+              {opcionesAnio.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="btn-secondary text-sm">
+              Ver
+            </button>
+          </form>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -86,7 +113,7 @@ export default async function ReportesPage({
         <StatCard
           label="Inversión acumulada"
           value={formatMoney(inversion.inversionAcumulada)}
-          hint="histórico, no mensual"
+          hint={anual ? "histórico, no anual" : "histórico, no mensual"}
           stripe="rosa"
         />
         <StatCard
@@ -96,7 +123,7 @@ export default async function ReportesPage({
           stripe="rosa"
         />
         <StatCard
-          label={`Margen real (${MESES[mesSel - 1].slice(0, 3)} ${anioSel})`}
+          label={`Margen real (${anual ? anioSel : `${MESES[mesSel - 1].slice(0, 3)} ${anioSel}`})`}
           value={margen ? `${formatMoney(margen)} c/u` : "—"}
           hint="precio venta − costo unitario"
           stripe="amarillo"
@@ -106,7 +133,7 @@ export default async function ReportesPage({
 
       <div className="card-chunky p-5 lg:p-6">
         <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
-          Desglose por tipo de cliente
+          Desglose por tipo de cliente — {etiquetaPeriodo}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <TipoStat label="Minorista" value={resumen.totalPorTipo.MINORISTA.toNumber()} />
@@ -116,23 +143,83 @@ export default async function ReportesPage({
         </div>
       </div>
 
-      <div className="card-chunky p-5 lg:p-6">
-        <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
-          Evolución diaria — {MESES[mesSel - 1]} {anioSel}
-        </div>
-        <div className="h-64">
-          <VentasChart data={resumen.ventasPorDia} />
-        </div>
-      </div>
+      {anualResumen ? (
+        <>
+          <div className="card-chunky p-5 lg:p-6">
+            <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
+              Mes a mes — {anioSel}
+            </div>
+            <div className="h-72">
+              <ComparacionChart data={anualResumen.porMes} />
+            </div>
+          </div>
 
-      <div className="card-chunky p-5 lg:p-6">
-        <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
-          Comparación mes a mes
-        </div>
-        <div className="h-72">
-          <ComparacionChart data={comparacion} />
-        </div>
-      </div>
+          <div className="card-chunky overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-navy/15 text-left">
+                    {["Mes", "Vendido", "Gastos", "Neto", "Unidades"].map((h, i) => (
+                      <th
+                        key={h}
+                        className={`px-5 py-3 font-extrabold text-xs uppercase text-navy/60 ${i > 0 ? "text-right" : ""}`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {anualResumen.porMes.map((m, i) => (
+                    <tr key={m.mes} className="border-b border-navy/10">
+                      <td className="px-5 py-2.5 font-semibold">{MESES[i]}</td>
+                      <td className="px-5 py-2.5 text-right whitespace-nowrap">{formatMoney(m.ventas)}</td>
+                      <td className="px-5 py-2.5 text-right whitespace-nowrap">{formatMoney(m.gastos)}</td>
+                      <td
+                        className={`px-5 py-2.5 text-right whitespace-nowrap font-bold ${m.neto < 0 ? "text-rosa" : ""}`}
+                      >
+                        {formatMoney(m.neto)}
+                      </td>
+                      <td className="px-5 py-2.5 text-right">{m.unidades}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-navy/30 font-black">
+                    <td className="px-5 py-3">Total {anioSel}</td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">{formatMoney(resumen.totalVentas)}</td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">{formatMoney(resumen.totalGastos)}</td>
+                    <td
+                      className={`px-5 py-3 text-right whitespace-nowrap ${resumen.neto.lt(0) ? "text-rosa" : ""}`}
+                    >
+                      {formatMoney(resumen.neto)}
+                    </td>
+                    <td className="px-5 py-3 text-right">{resumen.unidadesVendidas}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="card-chunky p-5 lg:p-6">
+            <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
+              Evolución diaria — {etiquetaPeriodo}
+            </div>
+            <div className="h-64">
+              <VentasChart data={mensual!.ventasPorDia} />
+            </div>
+          </div>
+
+          <div className="card-chunky p-5 lg:p-6">
+            <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
+              Comparación mes a mes
+            </div>
+            <div className="h-72">
+              <ComparacionChart data={comparacion!} />
+            </div>
+          </div>
+        </>
+      )}
 
       <Link href="/dashboard" className="text-sm font-extrabold underline decoration-2 self-start">
         ← Volver al dashboard
