@@ -7,14 +7,21 @@ import {
   previsualizarPrecio,
   type PrevisualizacionPrecio,
 } from "@/app/(app)/ventas/actions";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { parseFechaInput, todayInputValue } from "@/lib/date";
 import { SelectorConAlta } from "@/components/ventas/selector-con-alta";
 import { ModalClienteRapido, type ClienteCreado } from "@/components/ventas/modal-cliente-rapido";
+import { ModalClienteMinorista } from "@/components/ventas/modal-cliente-minorista";
 import { ModalEventoRapido, type EventoCreado } from "@/components/ventas/modal-evento-rapido";
 import { ModalTramos } from "@/components/ventas/modal-tramos";
 
-type Cliente = { id: string; nombre: string; apellido: string; tipo: string };
+type Cliente = {
+  id: string;
+  nombreNegocio: string | null;
+  nombre: string;
+  apellido: string;
+  tipo: string;
+};
 type Producto = { id: string; nombre: string; stockActual: number };
 type Evento = { id: string; nombre: string };
 
@@ -54,9 +61,6 @@ export function VentaForm({
   venta?: VentaEditable;
 }) {
   const esConcesion = Boolean(venta?.concesion);
-  // Venta minorista con cliente (las de Tiendup, o manuales viejas): se edita
-  // como venta rapida pero conserva su cliente.
-  const clienteMinoristaId = venta?.tipo === "MINORISTA" ? venta.clienteId : null;
   const [paso, setPaso] = useState(1);
   const [modo, setModo] = useState<Modo>(
     venta?.clienteId && venta.tipo !== "MINORISTA" ? "MAYORISTA" : "RAPIDA",
@@ -66,6 +70,11 @@ export function VentaForm({
   const [eventos, setEventos] = useState(eventosIniciales);
 
   const [clienteId, setClienteId] = useState(venta?.clienteId ?? "");
+  // Comprador opcional de la venta rapida (cliente minorista). Vacio = venta
+  // rapida sin cliente. Las de Tiendup ya vienen con el suyo.
+  const [clienteMinoristaId, setClienteMinoristaId] = useState(
+    venta?.tipo === "MINORISTA" ? (venta.clienteId ?? "") : "",
+  );
   const [productoId, setProductoId] = useState(venta?.productoId ?? productos[0]?.id ?? "");
   const [cantidad, setCantidad] = useState(venta ? String(venta.cantidad) : "1");
   // Al editar, mientras no se toquen cliente, cantidad ni tramo se conserva
@@ -86,7 +95,7 @@ export function VentaForm({
 
   const [clienteCreado, setClienteCreado] = useState(false);
   const [eventoCreado, setEventoCreado] = useState(false);
-  const [modal, setModal] = useState<"cliente" | "evento" | "tramo" | null>(null);
+  const [modal, setModal] = useState<"cliente" | "minorista" | "evento" | "tramo" | null>(null);
 
   const [fetchedPreview, setFetchedPreview] = useState<PrevisualizacionPrecio>(null);
   const [cargandoPrecio, setCargandoPrecio] = useState(false);
@@ -94,7 +103,7 @@ export function VentaForm({
   const [pending, startTransition] = useTransition();
 
   const cantidadNum = Number(cantidad) || 0;
-  const clienteConsulta = modo === "MAYORISTA" ? clienteId : (clienteMinoristaId ?? "");
+  const clienteConsulta = modo === "MAYORISTA" ? clienteId : clienteMinoristaId;
   const consultaValida = cantidadNum > 0 && (modo === "RAPIDA" || Boolean(clienteId));
   // Una liquidacion no tiene precio de lista: la caja muestra el cobrado.
   const preview: PrevisualizacionPrecio =
@@ -194,6 +203,9 @@ export function VentaForm({
 
   function handleCantidad(v: string) {
     setCantidad(v);
+    // Editando una minorista, el precio unitario no depende de la cantidad:
+    // se conserva el de la venta (o el corregido a mano). Ver actualizarVenta.
+    if (venta?.tipo === "MINORISTA" && modo === "RAPIDA") return;
     setPrecioEditado(null);
     setTramoElegido(null);
     setTocoPrecio(true);
@@ -214,6 +226,18 @@ export function VentaForm({
     setPrecioEditado(null);
     setTramoElegido(null);
     setTocoPrecio(true);
+    setModal(null);
+  }
+
+  // El comprador minorista no cambia el precio (es el PVP): no toca el
+  // precio ni el tramo.
+  function handleClienteMinorista(id: string) {
+    setClienteMinoristaId(id);
+  }
+
+  function handleClienteMinoristaCreado(c: ClienteCreado) {
+    setClientes((prev) => [...prev, c]);
+    setClienteMinoristaId(c.id);
     setModal(null);
   }
 
@@ -245,7 +269,7 @@ export function VentaForm({
     startTransition(async () => {
       try {
         const input = {
-          clienteId: modo === "MAYORISTA" ? clienteId : (clienteMinoristaId ?? ""),
+          clienteId: modo === "MAYORISTA" ? clienteId : clienteMinoristaId,
           productoId,
           eventoId,
           cantidad,
@@ -270,16 +294,20 @@ export function VentaForm({
   }
 
   const opcionesClientes = clientes
-    .filter((c) => c.tipo === "MAYORISTA" || c.tipo === "DISTRIBUIDOR" || c.id === venta?.clienteId)
+    .filter((c) => c.tipo === "MAYORISTA" || c.tipo === "DISTRIBUIDOR")
     .map((c) => ({
       id: c.id,
-      label: `${`${c.nombre} ${c.apellido}`.trim()} (${c.tipo.toLowerCase()})`,
+      label: `${nombreCliente(c)} (${c.tipo.toLowerCase()})`,
     }));
+  const opcionesMinoristas = clientes
+    .filter((c) => c.tipo === "MINORISTA")
+    .map((c) => ({ id: c.id, label: nombreCliente(c) }))
+    .sort((a, b) => a.label.localeCompare(b.label, "es"));
   const opcionesEventos = eventos.map((e) => ({ id: e.id, label: e.nombre }));
   const eventoSel = eventos.find((e) => e.id === eventoId);
   const clienteMinorista = clientes.find((c) => c.id === clienteMinoristaId);
   const nombreClienteMinorista = clienteMinorista
-    ? `${clienteMinorista.nombre} ${clienteMinorista.apellido}`.trim()
+    ? nombreCliente(clienteMinorista)
     : null;
 
   return (
@@ -314,7 +342,7 @@ export function VentaForm({
                   detalle={
                     nombreClienteMinorista
                       ? `Cliente: ${nombreClienteMinorista}`
-                      : "Sin cliente — ideal para eventos"
+                      : "Cliente opcional — ideal para eventos"
                   }
                 />
                 <OpcionTipo
@@ -351,16 +379,26 @@ export function VentaForm({
               />
             )}
 
-            {modo === "RAPIDA" && nombreClienteMinorista && (
-              <Campo label="Cliente">
-                <span className="font-semibold">{nombreClienteMinorista}</span>
+            {modo === "RAPIDA" && (
+              <Campo label="Cliente (opcional)">
+                <SelectorConAlta
+                  value={clienteMinoristaId}
+                  opciones={opcionesMinoristas}
+                  onChange={handleClienteMinorista}
+                  placeholder="Sin cliente (venta rápida)"
+                  vacioLabel="Sin cliente (venta rápida)"
+                  buscador
+                  crearLabel="Crear cliente con nombre y apellido"
+                  onCrear={() => setModal("minorista")}
+                  tono="amarillo"
+                />
               </Campo>
             )}
 
             {esConcesion && (
               <Campo label="Cliente">
                 <span className="font-semibold">
-                  {clienteSel ? `${clienteSel.nombre} ${clienteSel.apellido}`.trim() : "—"}
+                  {clienteSel ? nombreCliente(clienteSel) : "—"}
                 </span>
               </Campo>
             )}
@@ -553,7 +591,7 @@ export function VentaForm({
               {modo === "MAYORISTA" && clienteSel && (
                 <FilaResumen
                   label="Cliente"
-                  value={`${clienteSel.nombre} ${clienteSel.apellido}`.trim()}
+                  value={nombreCliente(clienteSel)}
                 />
               )}
               <FilaResumen label="Producto" value={`${productoSel?.nombre ?? "—"} x${cantidadNum}`} />
@@ -597,6 +635,12 @@ export function VentaForm({
 
       {modal === "cliente" && (
         <ModalClienteRapido onCreado={handleClienteCreado} onClose={() => setModal(null)} />
+      )}
+      {modal === "minorista" && (
+        <ModalClienteMinorista
+          onCreado={handleClienteMinoristaCreado}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal === "evento" && (
         <ModalEventoRapido

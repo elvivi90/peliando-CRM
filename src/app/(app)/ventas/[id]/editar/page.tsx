@@ -26,17 +26,10 @@ export default async function EditarVentaPage({
   if (!venta) notFound();
 
   const [clientes, productos, eventos] = await Promise.all([
-    // Los mismos que ofrece el alta, mas el cliente actual de la venta (una
-    // venta de Tiendup tiene un cliente minorista).
+    // Todos, como en el alta: mayoristas/distribuidores y minoristas.
     prisma.cliente.findMany({
-      where: {
-        OR: [
-          { tipo: { in: ["MAYORISTA", "DISTRIBUIDOR"] } },
-          ...(venta.clienteId ? [{ id: venta.clienteId }] : []),
-        ],
-      },
       orderBy: [{ apellido: "asc" }, { nombre: "asc" }],
-      select: { id: true, nombre: true, apellido: true, tipo: true },
+      select: { id: true, nombreNegocio: true, nombre: true, apellido: true, tipo: true },
     }),
     prisma.producto.findMany({ orderBy: { nombre: "asc" } }),
     prisma.evento.findMany({ orderBy: { fecha: "desc" }, take: 20 }),

@@ -6,11 +6,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 export default async function NuevaVentaPage() {
   const [clientes, productos, eventos, listaActiva] = await Promise.all([
-    // Solo los que se pueden elegir en el flujo mayorista/distribuidor.
+    // Mayoristas/distribuidores para ese flujo y minoristas para el comprador
+    // opcional de la venta rapida.
     prisma.cliente.findMany({
-      where: { tipo: { in: ["MAYORISTA", "DISTRIBUIDOR"] } },
       orderBy: [{ apellido: "asc" }, { nombre: "asc" }],
-      select: { id: true, nombre: true, apellido: true, tipo: true },
+      select: { id: true, nombreNegocio: true, nombre: true, apellido: true, tipo: true },
     }),
     prisma.producto.findMany({ orderBy: { nombre: "asc" } }),
     prisma.evento.findMany({ orderBy: { fecha: "desc" }, take: 20 }),

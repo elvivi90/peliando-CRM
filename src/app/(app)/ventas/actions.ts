@@ -176,11 +176,16 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
   }
 
   const cliente = await buscarCliente(data.clienteId);
+  // En una minorista el precio no depende de la cantidad ni del comprador
+  // (es el PVP): corregir la cantidad o agregar/cambiar el cliente minorista
+  // conserva el precio unitario con el que se vendio. En mayorista y
+  // distribuidor el cliente y la cantidad definen el tramo: recalcula.
+  const sigueMinorista = anterior.tipo === "MINORISTA" && (cliente?.tipo ?? "MINORISTA") === "MINORISTA";
   const conservarPrecio =
     esConcesion ||
     (mantenerPrecio &&
-      (data.clienteId ?? null) === anterior.clienteId &&
-      data.cantidad === anterior.cantidad);
+      (sigueMinorista ||
+        ((data.clienteId ?? null) === anterior.clienteId && data.cantidad === anterior.cantidad)));
 
   const precio = conservarPrecio
     ? {
