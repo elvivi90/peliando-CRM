@@ -112,7 +112,7 @@ export default async function ClientesPage({
                       <Link href={`/clientes/${c.id}`} className="font-bold hover:underline">
                         {nombreCliente(c)}
                       </Link>
-                      {c.nombreNegocio && (
+                      {c.nombreNegocio && contactoCliente(c) && (
                         <div className="text-xs text-navy/55">Contacto: {contactoCliente(c)}</div>
                       )}
                     </td>

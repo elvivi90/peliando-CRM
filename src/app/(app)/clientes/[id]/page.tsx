@@ -55,7 +55,12 @@ export default async function ClienteDetailPage({
       <PageHeader
         title={nombreCliente(cliente)}
         subtitle={
-          [cliente.nombreNegocio ? `Contacto: ${contactoCliente(cliente)}` : null, cliente.email || cliente.telefono]
+          [
+            cliente.nombreNegocio && contactoCliente(cliente)
+              ? `Contacto: ${contactoCliente(cliente)}`
+              : null,
+            cliente.email || cliente.telefono,
+          ]
             .filter(Boolean)
             .join(" · ") || undefined
         }

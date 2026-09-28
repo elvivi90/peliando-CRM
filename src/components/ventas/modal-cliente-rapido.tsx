@@ -62,10 +62,9 @@ export function ModalClienteRapido({
 
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-extrabold uppercase tracking-wide text-navy/70">
-            Contacto: nombre y apellido <span className="text-rosa">*</span>
+            Contacto: nombre y apellido (opcional)
           </span>
           <input
-            required
             className="input-chunky"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}

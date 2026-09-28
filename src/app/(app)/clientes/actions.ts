@@ -92,7 +92,8 @@ export async function agregarComentario(clienteId: string, texto: string) {
 
 const clienteRapidoSchema = z.object({
   nombreNegocio: z.string().trim().min(1, "Ingresá el nombre del negocio"),
-  nombreCompleto: z.string().trim().min(1, "Ingresá el nombre del contacto"),
+  // Contacto opcional: puede venir vacio.
+  nombreCompleto: z.string().trim().optional().default(""),
   tipo: z.enum(["MAYORISTA", "DISTRIBUIDOR"]),
   precioParticular: z
     .string()
@@ -113,7 +114,7 @@ export async function crearClienteRapido(input: {
 
   // El contacto se pide en un solo campo; el modelo guarda nombre y apellido:
   // se corta en el ultimo espacio ("Juan Carlos Pérez" -> "Juan Carlos" / "Pérez").
-  const partes = data.nombreCompleto.split(/\s+/);
+  const partes = data.nombreCompleto ? data.nombreCompleto.split(/\s+/) : [];
   const apellido = partes.length > 1 ? partes.pop()! : "";
   const nombre = partes.join(" ");
 

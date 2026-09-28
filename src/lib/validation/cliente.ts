@@ -6,8 +6,10 @@ export const clienteSchema = z
       .string()
       .optional()
       .transform((v) => (v && v.trim() !== "" ? v.trim() : undefined)),
-    nombre: z.string().trim().min(1, "El nombre es obligatorio"),
-    apellido: z.string().trim().min(1, "El apellido es obligatorio"),
+    // Obligatorios solo en minoristas (ver refine): en un mayorista o
+    // distribuidor son el contacto, que es opcional.
+    nombre: z.string().trim(),
+    apellido: z.string().trim(),
     email: z.string().trim().email("Email inválido").optional().or(z.literal("")),
     telefono: z.string().trim().optional().or(z.literal("")),
     direccion: z.string().trim().optional().or(z.literal("")),
@@ -22,10 +24,19 @@ export const clienteSchema = z
       .transform((v) => (v && v.trim() !== "" ? v : undefined)),
   })
   // Un mayorista o distribuidor se identifica por su negocio; nombre y
-  // apellido son la persona de contacto.
+  // apellido son la persona de contacto (opcional). Un minorista se
+  // identifica por su nombre y apellido.
   .refine((c) => c.tipo === "MINORISTA" || c.nombreNegocio, {
     message: "El nombre del negocio es obligatorio para mayoristas y distribuidores",
     path: ["nombreNegocio"],
+  })
+  .refine((c) => c.tipo !== "MINORISTA" || c.nombre, {
+    message: "El nombre es obligatorio",
+    path: ["nombre"],
+  })
+  .refine((c) => c.tipo !== "MINORISTA" || c.apellido, {
+    message: "El apellido es obligatorio",
+    path: ["apellido"],
   });
 
 export type ClienteInput = z.input<typeof clienteSchema>;

@@ -104,24 +104,24 @@ export function ClienteForm({
 
       {esNegocio && (
         <div className="text-xs font-black uppercase tracking-wide text-navy/55 -mb-1 mt-1">
-          Contacto
+          Contacto (opcional)
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Nombre" required>
+        <Field label="Nombre" required={!esNegocio}>
           <input
             className="input-chunky"
             value={values.nombre}
             onChange={(e) => update("nombre", e.target.value)}
-            required
+            required={!esNegocio}
           />
         </Field>
-        <Field label="Apellido" required>
+        <Field label="Apellido" required={!esNegocio}>
           <input
             className="input-chunky"
             value={values.apellido}
             onChange={(e) => update("apellido", e.target.value)}
-            required
+            required={!esNegocio}
           />
         </Field>
       </div>
