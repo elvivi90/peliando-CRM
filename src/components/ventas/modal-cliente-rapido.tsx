@@ -4,7 +4,13 @@ import { useState, useTransition } from "react";
 import { Modal } from "@/components/ui/modal";
 import { crearClienteRapido } from "@/app/(app)/clientes/actions";
 
-export type ClienteCreado = { id: string; nombre: string; apellido: string; tipo: string };
+export type ClienteCreado = {
+  id: string;
+  nombreNegocio: string | null;
+  nombre: string;
+  apellido: string;
+  tipo: string;
+};
 
 export function ModalClienteRapido({
   onCreado,
@@ -13,6 +19,7 @@ export function ModalClienteRapido({
   onCreado: (cliente: ClienteCreado) => void;
   onClose: () => void;
 }) {
+  const [negocio, setNegocio] = useState("");
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState<"MAYORISTA" | "DISTRIBUIDOR">("MAYORISTA");
   const [precio, setPrecio] = useState("");
@@ -25,6 +32,7 @@ export function ModalClienteRapido({
     startTransition(async () => {
       try {
         const cliente = await crearClienteRapido({
+          nombreNegocio: negocio,
           nombreCompleto: nombre,
           tipo,
           precioParticular: tipo === "MAYORISTA" ? precio : undefined,
@@ -41,10 +49,22 @@ export function ModalClienteRapido({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-extrabold uppercase tracking-wide text-navy/70">
-            Nombre y apellido <span className="text-rosa">*</span>
+            Nombre del negocio <span className="text-rosa">*</span>
           </span>
           <input
             autoFocus
+            required
+            className="input-chunky"
+            value={negocio}
+            onChange={(e) => setNegocio(e.target.value)}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-extrabold uppercase tracking-wide text-navy/70">
+            Contacto: nombre y apellido <span className="text-rosa">*</span>
+          </span>
+          <input
             required
             className="input-chunky"
             value={nombre}

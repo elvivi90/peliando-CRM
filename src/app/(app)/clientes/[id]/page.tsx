@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { Comentarios } from "@/components/clientes/comentarios";
-import { formatDate, formatMoney } from "@/lib/format";
+import { contactoCliente, formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { getCuentaCorriente } from "@/lib/services/cuenta-corriente";
 import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
@@ -53,8 +53,12 @@ export default async function ClienteDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={`${cliente.nombre} ${cliente.apellido}`}
-        subtitle={cliente.email || cliente.telefono || undefined}
+        title={nombreCliente(cliente)}
+        subtitle={
+          [cliente.nombreNegocio ? `Contacto: ${contactoCliente(cliente)}` : null, cliente.email || cliente.telefono]
+            .filter(Boolean)
+            .join(" · ") || undefined
+        }
         action={
           <div className="flex gap-2">
             <Link href={`/clientes/${id}/editar`} className="btn-secondary text-sm">

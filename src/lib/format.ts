@@ -27,7 +27,16 @@ export function toNumber(value: Prisma.Decimal | number | string | null | undefi
   return Number(value);
 }
 
-// Las ventas rapidas no tienen cliente.
-export function nombreCliente(cliente: { nombre: string; apellido: string } | null | undefined) {
-  return cliente ? `${cliente.nombre} ${cliente.apellido}`.trim() : "Venta rápida";
+type NombreCliente = { nombre: string; apellido: string; nombreNegocio?: string | null };
+
+// Como se muestra un cliente: el negocio si lo tiene (mayoristas y
+// distribuidores), si no la persona. Las ventas rapidas no tienen cliente.
+export function nombreCliente(cliente: NombreCliente | null | undefined) {
+  if (!cliente) return "Venta rápida";
+  return cliente.nombreNegocio?.trim() || contactoCliente(cliente);
+}
+
+// La persona: el contacto en un mayorista/distribuidor, el cliente en un minorista.
+export function contactoCliente(cliente: NombreCliente) {
+  return `${cliente.nombre} ${cliente.apellido}`.trim();
 }

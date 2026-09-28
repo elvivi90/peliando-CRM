@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { crearLiquidacion, crearDevolucion } from "@/app/(app)/concesion/actions";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { todayInputValue } from "@/lib/date";
 
 type Concesion = {
@@ -10,7 +10,7 @@ type Concesion = {
   fechaEntrega: Date | string;
   cantidadEntregada: number;
   saldo: number;
-  cliente: { nombre: string; apellido: string };
+  cliente: { nombreNegocio: string | null; nombre: string; apellido: string };
   producto: { nombre: string };
   liquidaciones: {
     id: string;
@@ -72,7 +72,7 @@ export function ConcesionCard({ concesion }: { concesion: Concesion }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="font-black">
-            {concesion.cliente.nombre} {concesion.cliente.apellido}
+            {nombreCliente(concesion.cliente)}
           </h3>
           <p className="text-xs text-navy/50 font-semibold">
             {concesion.producto.nombre} · Entregado {formatDate(concesion.fechaEntrega)}

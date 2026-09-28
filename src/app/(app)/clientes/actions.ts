@@ -13,6 +13,7 @@ export async function crearCliente(input: ClienteInput) {
 
   const cliente = await prisma.cliente.create({
     data: {
+      nombreNegocio: data.tipo === "MINORISTA" ? null : (data.nombreNegocio ?? null),
       nombre: data.nombre,
       apellido: data.apellido,
       email: data.email || null,
@@ -34,6 +35,7 @@ export async function actualizarCliente(id: string, input: ClienteInput) {
   await prisma.cliente.update({
     where: { id },
     data: {
+      nombreNegocio: data.tipo === "MINORISTA" ? null : (data.nombreNegocio ?? null),
       nombre: data.nombre,
       apellido: data.apellido,
       email: data.email || null,
@@ -89,7 +91,8 @@ export async function agregarComentario(clienteId: string, texto: string) {
 }
 
 const clienteRapidoSchema = z.object({
-  nombreCompleto: z.string().trim().min(1, "Ingresá el nombre del cliente"),
+  nombreNegocio: z.string().trim().min(1, "Ingresá el nombre del negocio"),
+  nombreCompleto: z.string().trim().min(1, "Ingresá el nombre del contacto"),
   tipo: z.enum(["MAYORISTA", "DISTRIBUIDOR"]),
   precioParticular: z
     .string()
@@ -101,20 +104,22 @@ const clienteRapidoSchema = z.object({
 // Alta desde el modal de Nueva venta: devuelve el cliente sin redirigir para
 // que la venta en curso siga donde estaba.
 export async function crearClienteRapido(input: {
+  nombreNegocio: string;
   nombreCompleto: string;
   tipo: "MAYORISTA" | "DISTRIBUIDOR";
   precioParticular?: string;
 }) {
   const data = clienteRapidoSchema.parse(input);
 
-  // El formulario pide un solo campo; el modelo guarda nombre y apellido:
-  // se corta en el ultimo espacio ("La Plata Lúdica" -> "La Plata" / "Lúdica").
+  // El contacto se pide en un solo campo; el modelo guarda nombre y apellido:
+  // se corta en el ultimo espacio ("Juan Carlos Pérez" -> "Juan Carlos" / "Pérez").
   const partes = data.nombreCompleto.split(/\s+/);
   const apellido = partes.length > 1 ? partes.pop()! : "";
   const nombre = partes.join(" ");
 
   const cliente = await prisma.cliente.create({
     data: {
+      nombreNegocio: data.nombreNegocio,
       nombre,
       apellido,
       tipo: data.tipo,
@@ -124,7 +129,27 @@ export async function crearClienteRapido(input: {
           ? data.precioParticular
           : null,
     },
-    select: { id: true, nombre: true, apellido: true, tipo: true },
+    select: { id: true, nombreNegocio: true, nombre: true, apellido: true, tipo: true },
+  });
+
+  revalidatePath("/clientes");
+  return cliente;
+}
+
+const clienteMinoristaRapidoSchema = z.object({
+  nombre: z.string().trim().min(1, "Ingresá el nombre"),
+  apellido: z.string().trim().optional().default(""),
+});
+
+// Alta desde la venta rapida: el comprador minorista es opcional, pero si se
+// carga queda como cliente (con su historial de compras, igual que los que
+// crea el webhook de Tiendup). Devuelve el cliente sin redirigir.
+export async function crearClienteMinoristaRapido(input: { nombre: string; apellido: string }) {
+  const data = clienteMinoristaRapidoSchema.parse(input);
+
+  const cliente = await prisma.cliente.create({
+    data: { nombre: data.nombre, apellido: data.apellido, tipo: "MINORISTA" },
+    select: { id: true, nombreNegocio: true, nombre: true, apellido: true, tipo: true },
   });
 
   revalidatePath("/clientes");

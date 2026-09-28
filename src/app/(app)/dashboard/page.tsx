@@ -124,9 +124,7 @@ export default async function DashboardPage() {
                 href={`/clientes/${p.cliente.id}`}
                 className="flex items-center justify-between text-sm border-b border-navy/10 pb-2.5 last:border-0 last:pb-0"
               >
-                <span className="font-bold">
-                  {p.cliente.nombre} {p.cliente.apellido}
-                </span>
+                <span className="font-bold">{nombreCliente(p.cliente)}</span>
                 <span className="flex items-center gap-3 text-xs font-semibold text-navy/60">
                   {p.cantidadPendiente > 0 && <span>{p.cantidadPendiente} un. sin entregar</span>}
                   {p.saldoPendiente.gt(0) && (

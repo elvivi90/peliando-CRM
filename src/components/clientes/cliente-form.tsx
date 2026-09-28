@@ -6,6 +6,7 @@ import { crearCliente, actualizarCliente } from "@/app/(app)/clientes/actions";
 type Lista = { id: string; nombre: string; estado: string };
 
 type ClienteFormValues = {
+  nombreNegocio: string;
   nombre: string;
   apellido: string;
   email: string;
@@ -32,6 +33,7 @@ export function ClienteForm({
   defaultValues?: Partial<ClienteFormValues>;
 }) {
   const [values, setValues] = useState<ClienteFormValues>({
+    nombreNegocio: defaultValues?.nombreNegocio ?? "",
     nombre: defaultValues?.nombre ?? "",
     apellido: defaultValues?.apellido ?? "",
     email: defaultValues?.email ?? "",
@@ -68,11 +70,43 @@ export function ClienteForm({
     });
   }
 
-  const mostrarListaPrecio = values.tipo === "MAYORISTA" || values.tipo === "DISTRIBUIDOR";
+  const esNegocio = values.tipo === "MAYORISTA" || values.tipo === "DISTRIBUIDOR";
+  const mostrarListaPrecio = esNegocio;
   const mostrarPrecioParticular = values.tipo === "MAYORISTA";
 
   return (
     <form onSubmit={handleSubmit} className="card-chunky p-6 flex flex-col gap-4 max-w-2xl">
+      <Field label="Tipo de cliente" required>
+        <select
+          className="input-chunky"
+          value={values.tipo}
+          onChange={(e) => update("tipo", e.target.value as ClienteFormValues["tipo"])}
+        >
+          {TIPOS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {esNegocio && (
+        <Field label="Nombre del negocio" required>
+          <input
+            className="input-chunky"
+            value={values.nombreNegocio}
+            onChange={(e) => update("nombreNegocio", e.target.value)}
+            placeholder="Librería El Ateneo"
+            required
+          />
+        </Field>
+      )}
+
+      {esNegocio && (
+        <div className="text-xs font-black uppercase tracking-wide text-navy/55 -mb-1 mt-1">
+          Contacto
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Nombre" required>
           <input
@@ -91,20 +125,6 @@ export function ClienteForm({
           />
         </Field>
       </div>
-
-      <Field label="Tipo de cliente" required>
-        <select
-          className="input-chunky"
-          value={values.tipo}
-          onChange={(e) => update("tipo", e.target.value as ClienteFormValues["tipo"])}
-        >
-          {TIPOS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </Field>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Email">

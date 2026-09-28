@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { fechaInputValue } from "@/lib/date";
+import { nombreCliente } from "@/lib/format";
 
 /**
  * Datos para el backup diario en Google Sheets (ver scripts/backup-sheets.gs,
@@ -26,8 +27,6 @@ function autorizado(request: NextRequest) {
 
 const num = (v: { toNumber(): number } | null | undefined) => (v ? v.toNumber() : null);
 const fecha = (d: Date | null | undefined) => (d ? fechaInputValue(d) : null);
-const persona = (p: { nombre: string; apellido: string } | null | undefined) =>
-  p ? `${p.nombre} ${p.apellido}`.trim() : null;
 
 export async function GET(request: NextRequest) {
   if (!autorizado(request)) {
@@ -63,7 +62,7 @@ export async function GET(request: NextRequest) {
         v.tipo,
         v.origen === "WEBHOOK_TIENDUP" ? "Tiendup" : "Manual",
         v.tiendupOrderId,
-        persona(v.cliente) ?? "Venta rápida",
+        nombreCliente(v.cliente),
         v.producto.nombre,
         v.cantidad,
         v.cantidadEntregada,
@@ -81,11 +80,12 @@ export async function GET(request: NextRequest) {
     ],
     Clientes: [
       [
-        "ID", "Nombre", "Apellido", "Tipo", "Email", "Teléfono", "Dirección",
+        "ID", "Negocio", "Nombre", "Apellido", "Tipo", "Email", "Teléfono", "Dirección",
         "Precio particular", "Lista de precios", "Alta",
       ],
       ...clientes.map((c) => [
         c.id,
+        c.nombreNegocio,
         c.nombre,
         c.apellido,
         c.tipo,
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
         e.ventaId,
         fecha(e.fecha),
         e.cantidad,
-        persona(e.venta.cliente) ?? "Venta rápida",
+        nombreCliente(e.venta.cliente),
         e.venta.producto.nombre,
       ]),
     ],

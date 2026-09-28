@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { contactoCliente, nombreCliente } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ export default async function ClientesPage({
       tipo: tipo ? (tipo as TipoCliente) : undefined,
       OR: q
         ? [
+            { nombreNegocio: { contains: q, mode: "insensitive" } },
             { nombre: { contains: q, mode: "insensitive" } },
             { apellido: { contains: q, mode: "insensitive" } },
           ]
@@ -54,7 +56,7 @@ export default async function ClientesPage({
               type="text"
               name="q"
               defaultValue={q}
-              placeholder="Nombre o apellido"
+              placeholder="Negocio, nombre o apellido"
               className="input-chunky"
             />
           </label>
@@ -108,8 +110,11 @@ export default async function ClientesPage({
                   <tr key={c.id} className="border-b border-navy/10 last:border-0">
                     <td className="px-5 py-3">
                       <Link href={`/clientes/${c.id}`} className="font-bold hover:underline">
-                        {c.nombre} {c.apellido}
+                        {nombreCliente(c)}
                       </Link>
+                      {c.nombreNegocio && (
+                        <div className="text-xs text-navy/55">Contacto: {contactoCliente(c)}</div>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <TipoBadge tipo={c.tipo} />

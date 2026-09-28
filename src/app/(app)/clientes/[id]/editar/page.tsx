@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { nombreCliente } from "@/lib/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { ClienteForm } from "@/components/clientes/cliente-form";
 
@@ -22,11 +23,12 @@ export default async function EditarClientePage({
 
   return (
     <div>
-      <PageHeader title={`Editar ${cliente.nombre} ${cliente.apellido}`} />
+      <PageHeader title={`Editar ${nombreCliente(cliente)}`} />
       <ClienteForm
         listas={listas}
         clienteId={cliente.id}
         defaultValues={{
+          nombreNegocio: cliente.nombreNegocio ?? "",
           nombre: cliente.nombre,
           apellido: cliente.apellido,
           email: cliente.email ?? "",

@@ -90,6 +90,10 @@ model SuscripcionPush {
 
 model Cliente {
   id               String          @id @default(uuid())
+  // Solo mayoristas y distribuidores: el negocio es como se los identifica;
+  // nombre y apellido pasan a ser la persona de contacto. Null en los
+  // minoristas y en los mayoristas cargados antes de este campo.
+  nombreNegocio    String?
   nombre           String
   apellido         String
   email            String?     @unique
