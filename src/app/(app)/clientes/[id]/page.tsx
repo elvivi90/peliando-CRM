@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { Comentarios } from "@/components/clientes/comentarios";
-import { contactoCliente, formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { contactoCliente, formatDate, formatMoney, linkInstagram, nombreCliente } from "@/lib/format";
 import { getCuentaCorriente } from "@/lib/services/cuenta-corriente";
 import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
@@ -65,6 +65,16 @@ export default async function ClienteDetailPage({
         }
         action={
           <div className="flex gap-2">
+            {cliente.instagram && (
+              <a
+                href={linkInstagram(cliente.instagram)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary text-sm"
+              >
+                Ver Instagram
+              </a>
+            )}
             <Link href={`/clientes/${id}/editar`} className="btn-secondary text-sm">
               Editar
             </Link>
@@ -85,6 +95,7 @@ export default async function ClienteDetailPage({
               <Detail label="Email" value={cliente.email} />
               <Detail label="Teléfono" value={cliente.telefono} />
               <Detail label="Dirección" value={cliente.direccion} />
+              {cliente.instagram && <Detail label="Instagram" value={`@${cliente.instagram}`} />}
             </dl>
           </div>
 

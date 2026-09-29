@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizarInstagram } from "@/lib/format";
 
 export const clienteSchema = z
   .object({
@@ -13,6 +14,11 @@ export const clienteSchema = z
     email: z.string().trim().email("Email inválido").optional().or(z.literal("")),
     telefono: z.string().trim().optional().or(z.literal("")),
     direccion: z.string().trim().optional().or(z.literal("")),
+    instagram: z
+      .string()
+      .optional()
+      .refine((v) => !v?.trim() || normalizarInstagram(v), "Usuario de Instagram inválido")
+      .transform((v) => normalizarInstagram(v) ?? undefined),
     tipo: z.enum(["MINORISTA", "MAYORISTA", "DISTRIBUIDOR"]),
   })
   // Un mayorista o distribuidor se identifica por su negocio; nombre y

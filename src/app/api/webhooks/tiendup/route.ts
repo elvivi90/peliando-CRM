@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { parseFechaHoraArgentina } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
+import { geocodificarPendientes } from "@/lib/services/geocoding";
 import { envioCompletado, fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 
 /**
@@ -183,6 +184,16 @@ export async function POST(request: NextRequest) {
   // venta manual con entrega pendiente.
   const entregada = envioCompletado(order);
 
+  // Destino del envio, para el mapa de ventas de Reportes. Un retiro en
+  // sucursal no trae direccion (Tiendup no informa donde queda la sucursal).
+  const destino =
+    order.shipping?.type === "ship" && order.shipping.address?.city
+      ? {
+          envioLocalidad: order.shipping.address.city.trim(),
+          envioProvincia: order.shipping.address.state?.trim() || null,
+        }
+      : { envioLocalidad: null, envioProvincia: null };
+
   try {
     const venta = await prisma.$transaction(async (tx) => {
       const nuevaVenta = await tx.venta.create({
@@ -200,6 +211,7 @@ export async function POST(request: NextRequest) {
           fecha,
           descripcion,
           tiendupOrderId: orderId,
+          ...destino,
         },
       });
 
@@ -216,6 +228,15 @@ export async function POST(request: NextRequest) {
 
     // Solo aca y no en los caminos de duplicado: un reintento de Tiendup no
     // tiene que volver a avisar la misma venta.
+    // Coordenadas de la localidad para el mapa (si ya estaban, no consulta).
+    if (destino.envioLocalidad) {
+      after(() =>
+        geocodificarPendientes([
+          [destino.envioLocalidad, destino.envioProvincia].filter(Boolean).join(", "),
+        ]),
+      );
+    }
+
     after(() =>
       enviarNotificacion({
         titulo: "Venta en Tiendup",

@@ -99,6 +99,8 @@ model Cliente {
   email            String?     @unique
   telefono         String?
   direccion        String?
+  // Usuario de Instagram sin la @ (solo mayoristas y distribuidores).
+  instagram        String?
   tipo             TipoCliente
   // Solo mayoristas con acuerdo propio que no sigue la lista de precios
   precioParticular Decimal?        @db.Decimal(12, 2)
@@ -217,6 +219,10 @@ model Venta {
   // Lo que le cuesta a Peliando enviar esta venta (lo paga el negocio, no
   // el cliente): no cambia el precio y en Reportes suma como gasto del mes.
   costoEnvio        Decimal     @default(0) @db.Decimal(12, 2)
+  // Destino del envio (solo ventas de Tiendup con envio a domicilio): de
+  // donde sale la ubicacion de la venta en el mapa de Reportes.
+  envioLocalidad    String?
+  envioProvincia    String?
   descripcion       String?
   origen            OrigenVenta @default(MANUAL)
   // Id de la orden en Tiendup (solo origen WEBHOOK_TIENDUP). El @unique
@@ -315,4 +321,22 @@ model Gasto {
   @@index([categoria])
   @@index([tipo])
   @@map("gastos")
+}
+
+// Coordenadas ya buscadas para el mapa de ventas (Nominatim/OpenStreetMap),
+// para no volver a consultar el mismo lugar. `consulta` es el texto buscado,
+// normalizado (ver lib/services/geocoding.ts). lat/lng null = se busco y no
+// se encontro (tampoco se reintenta).
+model Geocodificacion {
+  id        String   @id @default(uuid())
+  consulta  String   @unique
+  lat       Float?
+  lng       Float?
+  // Localidad y provincia que devolvio el servicio: agrupan el mapa (dos
+  // direcciones de la misma ciudad caen en el mismo circulo).
+  localidad String?
+  provincia String?
+  createdAt DateTime @default(now())
+
+  @@map("geocodificaciones")
 }

@@ -27,6 +27,7 @@ export default async function EditarClientePage({
           email: cliente.email ?? "",
           telefono: cliente.telefono ?? "",
           direccion: cliente.direccion ?? "",
+          instagram: cliente.instagram ?? "",
           tipo: cliente.tipo,
         }}
       />

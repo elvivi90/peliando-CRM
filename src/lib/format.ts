@@ -27,6 +27,23 @@ export function toNumber(value: Prisma.Decimal | number | string | null | undefi
   return Number(value);
 }
 
+// Acepta "@usuario", "usuario" o el link del perfil
+// ("https://www.instagram.com/usuario/?hl=es") y devuelve "usuario", o null
+// si no es un usuario valido de Instagram (letras, numeros, punto y guion
+// bajo, hasta 30).
+export function normalizarInstagram(valor: string | null | undefined) {
+  const texto = (valor ?? "").trim();
+  if (!texto) return null;
+  const delLink = texto.match(/instagram\.com\/([^/?#\s]+)/i);
+  const usuario = (delLink ? delLink[1] : texto).replace(/^@/, "").toLowerCase();
+  return /^[a-z0-9._]{1,30}$/.test(usuario) ? usuario : null;
+}
+
+// En el celular abre la app de Instagram en el perfil; en la compu, la web.
+export function linkInstagram(usuario: string) {
+  return `https://www.instagram.com/${usuario}/`;
+}
+
 type NombreCliente = { nombre: string; apellido: string; nombreNegocio?: string | null };
 
 // Como se muestra un cliente: el negocio si lo tiene (mayoristas y

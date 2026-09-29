@@ -10,6 +10,7 @@ type ClienteFormValues = {
   email: string;
   telefono: string;
   direccion: string;
+  instagram: string;
   tipo: "MINORISTA" | "MAYORISTA" | "DISTRIBUIDOR";
 };
 
@@ -33,6 +34,7 @@ export function ClienteForm({
     email: defaultValues?.email ?? "",
     telefono: defaultValues?.telefono ?? "",
     direccion: defaultValues?.direccion ?? "",
+    instagram: defaultValues?.instagram ?? "",
     tipo: defaultValues?.tipo ?? "MINORISTA",
   });
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +143,22 @@ export function ClienteForm({
           onChange={(e) => update("direccion", e.target.value)}
         />
       </Field>
+
+      {esNegocio && (
+        <Field label="Instagram" hint="El usuario o el link del perfil">
+          <div className="flex items-center gap-2">
+            <span className="font-black text-navy/50">@</span>
+            <input
+              className="input-chunky flex-1"
+              value={values.instagram}
+              onChange={(e) => update("instagram", e.target.value)}
+              placeholder="peliando.juego"
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+          </div>
+        </Field>
+      )}
 
       {error && (
         <p className="text-sm font-bold text-rosa" role="alert">

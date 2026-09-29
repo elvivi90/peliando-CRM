@@ -79,7 +79,8 @@ export async function GET(request: NextRequest) {
     ],
     Clientes: [
       [
-        "ID", "Negocio", "Nombre", "Apellido", "Tipo", "Email", "Teléfono", "Dirección", "Alta",
+        "ID", "Negocio", "Nombre", "Apellido", "Tipo", "Email", "Teléfono", "Dirección",
+        "Instagram", "Alta",
       ],
       ...clientes.map((c) => [
         c.id,
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
         c.email,
         c.telefono,
         c.direccion,
+        c.instagram,
         fecha(c.createdAt),
       ]),
     ],

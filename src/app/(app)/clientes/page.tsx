@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { contactoCliente, nombreCliente } from "@/lib/format";
+import { contactoCliente, linkInstagram, nombreCliente } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
@@ -114,6 +114,16 @@ export default async function ClientesPage({
                       </Link>
                       {c.nombreNegocio && contactoCliente(c) && (
                         <div className="text-xs text-navy/55">Contacto: {contactoCliente(c)}</div>
+                      )}
+                      {c.instagram && (
+                        <a
+                          href={linkInstagram(c.instagram)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-rosa hover:underline"
+                        >
+                          @{c.instagram}
+                        </a>
                       )}
                     </td>
                     <td className="px-5 py-3">

@@ -19,6 +19,7 @@ export async function crearCliente(input: ClienteInput) {
       email: data.email || null,
       telefono: data.telefono || null,
       direccion: data.direccion || null,
+      instagram: data.tipo === "MINORISTA" ? null : (data.instagram ?? null),
       tipo: data.tipo,
     },
   });
@@ -39,6 +40,7 @@ export async function actualizarCliente(id: string, input: ClienteInput) {
       email: data.email || null,
       telefono: data.telefono || null,
       direccion: data.direccion || null,
+      instagram: data.tipo === "MINORISTA" ? null : (data.instagram ?? null),
       tipo: data.tipo,
       // La lista es siempre la activa y no hay precio propio por cliente:
       // se limpia lo que haya quedado de antes (ver lib/pricing.ts).
