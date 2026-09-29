@@ -91,7 +91,7 @@ export default async function ClienteDetailPage({
             <div className="flex items-center gap-3 mb-4">
               <TipoBadge tipo={cliente.tipo} />
             </div>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <Detail label="Email" value={cliente.email} />
               <Detail label="Teléfono" value={cliente.telefono} />
               <Detail label="Dirección" value={cliente.direccion} />
@@ -213,18 +213,25 @@ export default async function ClienteDetailPage({
         </div>
 
         <div>
-          <Comentarios clienteId={id} comentarios={cliente.comentarios} />
+          <Comentarios
+            clienteId={id}
+            comentarios={cliente.comentarios}
+            usuarioActualId={usuario.id}
+            esAdmin={puedeEliminar}
+          />
         </div>
       </div>
     </div>
   );
 }
 
+// min-w-0 + break-words: un email o una direccion larga corta linea en vez
+// de pisar la columna de al lado.
 function Detail({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs font-bold text-navy/50 uppercase">{label}</dt>
-      <dd className="font-semibold">{value || "—"}</dd>
+      <dd className="font-semibold break-words">{value || "—"}</dd>
     </div>
   );
 }

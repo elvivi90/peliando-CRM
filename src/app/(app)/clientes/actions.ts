@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUsuario, requireAdminPrincipal } from "@/lib/auth";
+import { getCurrentUsuario, requireAdminPrincipal, esAdminPrincipal } from "@/lib/auth";
 import { clienteSchema, type ClienteInput } from "@/lib/validation/cliente";
 
 export async function crearCliente(input: ClienteInput) {
@@ -90,6 +90,20 @@ export async function agregarComentario(clienteId: string, texto: string) {
   });
 
   revalidatePath(`/clientes/${clienteId}`);
+}
+
+// Lo puede borrar quien lo escribio o el admin principal (ver lib/auth.ts).
+// Se chequea aca y no solo en la UI: una server action se puede invocar
+// directo sin pasar por la pantalla.
+export async function eliminarComentario(id: string) {
+  const usuario = await getCurrentUsuario();
+  const comentario = await prisma.comentario.findUniqueOrThrow({ where: { id } });
+  if (comentario.usuarioId !== usuario.id && !esAdminPrincipal(usuario)) {
+    throw new Error("Solo quien escribió el comentario puede eliminarlo.");
+  }
+
+  await prisma.comentario.delete({ where: { id } });
+  revalidatePath(`/clientes/${comentario.clienteId}`);
 }
 
 const clienteRapidoSchema = z.object({

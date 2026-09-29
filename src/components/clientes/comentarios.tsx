@@ -1,22 +1,29 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { agregarComentario } from "@/app/(app)/clientes/actions";
+import { agregarComentario, eliminarComentario } from "@/app/(app)/clientes/actions";
+import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { formatDate } from "@/lib/format";
 
 type Comentario = {
   id: string;
   texto: string;
   fecha: Date | string;
+  usuarioId: string;
   usuario: { nombre: string };
 };
 
 export function Comentarios({
   clienteId,
   comentarios,
+  usuarioActualId,
+  esAdmin,
 }: {
   clienteId: string;
   comentarios: Comentario[];
+  // Cada uno borra sus comentarios; el admin principal, cualquiera.
+  usuarioActualId: string;
+  esAdmin: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -62,10 +69,19 @@ export function Comentarios({
         <ul className="flex flex-col gap-3">
           {comentarios.map((c) => (
             <li key={c.id} className="border-t-2 border-navy/10 pt-3 first:border-0 first:pt-0">
-              <p className="text-sm">{c.texto}</p>
-              <p className="text-xs text-navy/50 mt-1 font-semibold">
-                {c.usuario.nombre} · {formatDate(c.fecha)}
-              </p>
+              <p className="text-sm break-words">{c.texto}</p>
+              <div className="flex items-center justify-between gap-3 mt-1">
+                <p className="text-xs text-navy/50 font-semibold">
+                  {c.usuario.nombre} · {formatDate(c.fecha)}
+                </p>
+                {(esAdmin || c.usuarioId === usuarioActualId) && (
+                  <BotonEliminar
+                    entidad="este comentario"
+                    onEliminar={() => eliminarComentario(c.id)}
+                    compacto
+                  />
+                )}
+              </div>
             </li>
           ))}
         </ul>
