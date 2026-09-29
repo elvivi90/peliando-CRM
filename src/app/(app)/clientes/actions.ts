@@ -20,8 +20,6 @@ export async function crearCliente(input: ClienteInput) {
       telefono: data.telefono || null,
       direccion: data.direccion || null,
       tipo: data.tipo,
-      precioParticular: data.precioParticular ? Number(data.precioParticular) : null,
-      listaPrecioId: data.listaPrecioId ?? null,
     },
   });
 
@@ -42,8 +40,10 @@ export async function actualizarCliente(id: string, input: ClienteInput) {
       telefono: data.telefono || null,
       direccion: data.direccion || null,
       tipo: data.tipo,
-      precioParticular: data.precioParticular ? Number(data.precioParticular) : null,
-      listaPrecioId: data.listaPrecioId ?? null,
+      // La lista es siempre la activa y no hay precio propio por cliente:
+      // se limpia lo que haya quedado de antes (ver lib/pricing.ts).
+      precioParticular: null,
+      listaPrecioId: null,
     },
   });
 
@@ -95,11 +95,6 @@ const clienteRapidoSchema = z.object({
   // Contacto opcional: puede venir vacio.
   nombreCompleto: z.string().trim().optional().default(""),
   tipo: z.enum(["MAYORISTA", "DISTRIBUIDOR"]),
-  precioParticular: z
-    .string()
-    .optional()
-    .transform((v) => (v && v.trim() !== "" ? Number(v) : undefined))
-    .refine((v) => v === undefined || (Number.isFinite(v) && v >= 0), "Precio inválido"),
 });
 
 // Alta desde el modal de Nueva venta: devuelve el cliente sin redirigir para
@@ -108,7 +103,6 @@ export async function crearClienteRapido(input: {
   nombreNegocio: string;
   nombreCompleto: string;
   tipo: "MAYORISTA" | "DISTRIBUIDOR";
-  precioParticular?: string;
 }) {
   const data = clienteRapidoSchema.parse(input);
 
@@ -124,11 +118,6 @@ export async function crearClienteRapido(input: {
       nombre,
       apellido,
       tipo: data.tipo,
-      // El distribuidor siempre usa la formula del tramo (-20%), sin precio propio.
-      precioParticular:
-        data.tipo === "MAYORISTA" && data.precioParticular !== undefined
-          ? data.precioParticular
-          : null,
     },
     select: { id: true, nombreNegocio: true, nombre: true, apellido: true, tipo: true },
   });

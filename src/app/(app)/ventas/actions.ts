@@ -31,8 +31,6 @@ async function calcularPrecio(data: VentaData, cliente: ClienteVenta | null) {
     sugerencia = await sugerirPrecio({
       tipo,
       cantidad: data.cantidad,
-      clientePrecioParticular: cliente?.precioParticular,
-      clienteListaPrecioId: cliente?.listaPrecioId,
       tramoId: data.tramoId,
     });
   } catch (err) {
@@ -306,7 +304,9 @@ export type PrevisualizacionPrecio = {
   precioUnitario: number;
   precioTotal: number;
   editable: boolean;
-  // Que muestra la caja de precio: "PVP MINORISTA", "TRAMO 10 UN.", "PRECIO PARTICULAR"
+  // Que muestra la caja de precio: "PVP MINORISTA", "TRAMO 10 UN.".
+  // PARTICULAR solo lo arma el formulario para una liquidacion de concesion
+  // (precio cobrado, sin lista).
   origen: "PVP" | "TRAMO" | "PARTICULAR";
   tramoDesde: number | null;
   // Tramo aplicado, el que corresponde a la cantidad (automatico) y la lista
@@ -334,8 +334,6 @@ export async function previsualizarPrecio(
     const sugerencia = await sugerirPrecio({
       tipo,
       cantidad,
-      clientePrecioParticular: cliente?.precioParticular,
-      clienteListaPrecioId: cliente?.listaPrecioId,
       tramoId,
     });
     const conTramos = tipo !== "MINORISTA";
@@ -344,8 +342,7 @@ export async function previsualizarPrecio(
       precioUnitario: sugerencia.precioUnitario.toNumber(),
       precioTotal: sugerencia.precioTotal.toNumber(),
       editable: tipo !== "DISTRIBUIDOR",
-      origen:
-        tipo === "MINORISTA" ? "PVP" : sugerencia.tramoDesde === null ? "PARTICULAR" : "TRAMO",
+      origen: tipo === "MINORISTA" ? "PVP" : "TRAMO",
       tramoDesde: sugerencia.tramoDesde,
       tramoId: sugerencia.tramoId,
       tramoSugeridoId: conTramos ? (elegirTramo(sugerencia.tramos, cantidad)?.id ?? null) : null,

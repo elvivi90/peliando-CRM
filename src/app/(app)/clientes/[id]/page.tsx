@@ -21,7 +21,6 @@ export default async function ClienteDetailPage({
   const cliente = await prisma.cliente.findUnique({
     where: { id },
     include: {
-      listaPrecio: true,
       comentarios: { orderBy: { fecha: "desc" }, include: { usuario: true } },
       concesiones: {
         include: { producto: true, liquidaciones: true, devoluciones: true },
@@ -81,20 +80,11 @@ export default async function ClienteDetailPage({
           <div className="card-chunky p-5">
             <div className="flex items-center gap-3 mb-4">
               <TipoBadge tipo={cliente.tipo} />
-              {cliente.precioParticular && (
-                <span className="text-sm font-bold text-navy/70">
-                  Precio particular: {formatMoney(cliente.precioParticular)}
-                </span>
-              )}
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <Detail label="Email" value={cliente.email} />
               <Detail label="Teléfono" value={cliente.telefono} />
               <Detail label="Dirección" value={cliente.direccion} />
-              <Detail
-                label="Lista de precios"
-                value={cliente.listaPrecio ? cliente.listaPrecio.nombre : "Activa por defecto"}
-              />
             </dl>
           </div>
 

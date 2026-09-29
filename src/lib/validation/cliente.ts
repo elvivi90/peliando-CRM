@@ -14,14 +14,6 @@ export const clienteSchema = z
     telefono: z.string().trim().optional().or(z.literal("")),
     direccion: z.string().trim().optional().or(z.literal("")),
     tipo: z.enum(["MINORISTA", "MAYORISTA", "DISTRIBUIDOR"]),
-    precioParticular: z
-      .string()
-      .optional()
-      .transform((v) => (v && v.trim() !== "" ? v : undefined)),
-    listaPrecioId: z
-      .string()
-      .optional()
-      .transform((v) => (v && v.trim() !== "" ? v : undefined)),
   })
   // Un mayorista o distribuidor se identifica por su negocio; nombre y
   // apellido son la persona de contacto (opcional). Un minorista se

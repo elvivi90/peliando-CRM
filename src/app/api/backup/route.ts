@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
     }),
     prisma.cliente.findMany({
       orderBy: [{ apellido: "asc" }, { nombre: "asc" }],
-      include: { listaPrecio: true },
     }),
     prisma.gasto.findMany({ orderBy: { fecha: "asc" }, include: { evento: true, usuario: true } }),
     prisma.entrega.findMany({
@@ -80,8 +79,7 @@ export async function GET(request: NextRequest) {
     ],
     Clientes: [
       [
-        "ID", "Negocio", "Nombre", "Apellido", "Tipo", "Email", "Teléfono", "Dirección",
-        "Precio particular", "Lista de precios", "Alta",
+        "ID", "Negocio", "Nombre", "Apellido", "Tipo", "Email", "Teléfono", "Dirección", "Alta",
       ],
       ...clientes.map((c) => [
         c.id,
@@ -92,8 +90,6 @@ export async function GET(request: NextRequest) {
         c.email,
         c.telefono,
         c.direccion,
-        num(c.precioParticular),
-        c.listaPrecio?.nombre ?? null,
         fecha(c.createdAt),
       ]),
     ],

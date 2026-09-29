@@ -62,24 +62,22 @@ export function precioDeTramo(tipo: TipoVenta, tramo: { precioUnitario: Prisma.D
  * Calcula el precio sugerido segun las reglas de la seccion 3.2. El
  * resultado es solo una sugerencia editable, excepto para Distribuidor
  * donde la formula es obligatoria (ver spec: "SIEMPRE se calcula...").
+ *
+ * La lista es una sola para todos: siempre la activa. Lo que cambia por
+ * cliente es el tipo (PVP, tramo, tramo - 20%), no la lista ni un precio
+ * propio. (Cliente.listaPrecioId y Cliente.precioParticular quedaron en la
+ * base de antes pero ya no se usan.)
  */
 export async function sugerirPrecio(params: {
   tipo: TipoVenta;
   cantidad: number;
-  clientePrecioParticular?: Prisma.Decimal | null;
-  clienteListaPrecioId?: string | null;
   // Tramo elegido a mano (mayorista/distribuidor). Si no viene, se elige
   // automaticamente el que corresponde a la cantidad.
   tramoId?: string | null;
 }): Promise<SugerenciaPrecio> {
-  const { tipo, cantidad, clientePrecioParticular, clienteListaPrecioId, tramoId } = params;
+  const { tipo, cantidad, tramoId } = params;
 
-  const lista = clienteListaPrecioId
-    ? await prisma.listaDePrecios.findUniqueOrThrow({
-        where: { id: clienteListaPrecioId },
-        include: { tramos: { orderBy: { cantidadDesde: "asc" } } },
-      })
-    : await getListaActiva();
+  const lista = await getListaActiva();
 
   const base = { listaId: lista.id, listaNombre: lista.nombre, tramos: lista.tramos };
 
@@ -94,22 +92,11 @@ export async function sugerirPrecio(params: {
   }
 
   if (tipo === "MAYORISTA" || tipo === "DISTRIBUIDOR") {
-    // Un tramo elegido a mano tiene prioridad, incluso sobre el precio particular.
-    if (tipo === "MAYORISTA" && clientePrecioParticular && !tramoId) {
-      return {
-        ...base,
-        tramoId: null,
-        tramoDesde: null,
-        precioUnitario: clientePrecioParticular,
-        precioTotal: clientePrecioParticular.mul(cantidad),
-      };
-    }
-
     const tramo = tramoId
       ? lista.tramos.find((t) => t.id === tramoId)
       : elegirTramo(lista.tramos, cantidad);
     if (tramoId && !tramo) {
-      throw new PricingError("El tramo elegido no pertenece a la lista de precios de este cliente.");
+      throw new PricingError("El tramo elegido no pertenece a la lista de precios activa.");
     }
     if (!tramo) {
       throw new PricingError(

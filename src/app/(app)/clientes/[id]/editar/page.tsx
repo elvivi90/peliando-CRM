@@ -11,13 +11,7 @@ export default async function EditarClientePage({
 }) {
   const { id } = await params;
 
-  const [cliente, listas] = await Promise.all([
-    prisma.cliente.findUnique({ where: { id } }),
-    prisma.listaDePrecios.findMany({
-      orderBy: { createdAt: "desc" },
-      select: { id: true, nombre: true, estado: true },
-    }),
-  ]);
+  const cliente = await prisma.cliente.findUnique({ where: { id } });
 
   if (!cliente) notFound();
 
@@ -25,7 +19,6 @@ export default async function EditarClientePage({
     <div>
       <PageHeader title={`Editar ${nombreCliente(cliente)}`} />
       <ClienteForm
-        listas={listas}
         clienteId={cliente.id}
         defaultValues={{
           nombreNegocio: cliente.nombreNegocio ?? "",
@@ -35,8 +28,6 @@ export default async function EditarClientePage({
           telefono: cliente.telefono ?? "",
           direccion: cliente.direccion ?? "",
           tipo: cliente.tipo,
-          precioParticular: cliente.precioParticular?.toString() ?? "",
-          listaPrecioId: cliente.listaPrecioId ?? "",
         }}
       />
     </div>

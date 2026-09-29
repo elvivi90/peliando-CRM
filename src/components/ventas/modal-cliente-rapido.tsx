@@ -22,7 +22,6 @@ export function ModalClienteRapido({
   const [negocio, setNegocio] = useState("");
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState<"MAYORISTA" | "DISTRIBUIDOR">("MAYORISTA");
-  const [precio, setPrecio] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -35,7 +34,6 @@ export function ModalClienteRapido({
           nombreNegocio: negocio,
           nombreCompleto: nombre,
           tipo,
-          precioParticular: tipo === "MAYORISTA" ? precio : undefined,
         });
         onCreado(cliente);
       } catch (err) {
@@ -91,27 +89,11 @@ export function ModalClienteRapido({
           </div>
         </div>
 
-        {tipo === "MAYORISTA" ? (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-navy/70">
-              Precio particular (opcional)
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              placeholder="—"
-              className="input-chunky w-32"
-              value={precio}
-              onChange={(e) => setPrecio(e.target.value)}
-            />
-          </label>
-        ) : (
-          <p className="text-xs font-semibold text-navy/60">
-            El distribuidor siempre paga el precio del tramo menos 20%.
-          </p>
-        )}
+        <p className="text-xs font-semibold text-navy/60">
+          {tipo === "MAYORISTA"
+            ? "El mayorista paga el precio del tramo de la lista activa."
+            : "El distribuidor paga el precio del tramo de la lista activa menos 20%."}
+        </p>
 
         {error && (
           <p className="text-sm font-bold text-rosa" role="alert">

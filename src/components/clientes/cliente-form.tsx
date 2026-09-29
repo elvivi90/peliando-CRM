@@ -3,8 +3,6 @@
 import { useState, useTransition } from "react";
 import { crearCliente, actualizarCliente } from "@/app/(app)/clientes/actions";
 
-type Lista = { id: string; nombre: string; estado: string };
-
 type ClienteFormValues = {
   nombreNegocio: string;
   nombre: string;
@@ -13,8 +11,6 @@ type ClienteFormValues = {
   telefono: string;
   direccion: string;
   tipo: "MINORISTA" | "MAYORISTA" | "DISTRIBUIDOR";
-  precioParticular: string;
-  listaPrecioId: string;
 };
 
 const TIPOS = [
@@ -24,11 +20,9 @@ const TIPOS = [
 ] as const;
 
 export function ClienteForm({
-  listas,
   clienteId,
   defaultValues,
 }: {
-  listas: Lista[];
   clienteId?: string;
   defaultValues?: Partial<ClienteFormValues>;
 }) {
@@ -40,8 +34,6 @@ export function ClienteForm({
     telefono: defaultValues?.telefono ?? "",
     direccion: defaultValues?.direccion ?? "",
     tipo: defaultValues?.tipo ?? "MINORISTA",
-    precioParticular: defaultValues?.precioParticular ?? "",
-    listaPrecioId: defaultValues?.listaPrecioId ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -71,8 +63,6 @@ export function ClienteForm({
   }
 
   const esNegocio = values.tipo === "MAYORISTA" || values.tipo === "DISTRIBUIDOR";
-  const mostrarListaPrecio = esNegocio;
-  const mostrarPrecioParticular = values.tipo === "MAYORISTA";
 
   return (
     <form onSubmit={handleSubmit} className="card-chunky p-6 flex flex-col gap-4 max-w-2xl">
@@ -151,40 +141,6 @@ export function ClienteForm({
           onChange={(e) => update("direccion", e.target.value)}
         />
       </Field>
-
-      {mostrarListaPrecio && (
-        <Field label="Lista de precios" hint="Si no se define, se usa la lista activa por defecto">
-          <select
-            className="input-chunky"
-            value={values.listaPrecioId}
-            onChange={(e) => update("listaPrecioId", e.target.value)}
-          >
-            <option value="">Usar lista activa por defecto</option>
-            {listas.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.nombre} {l.estado === "HISTORICA" ? "(histórica)" : ""}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
-
-      {mostrarPrecioParticular && (
-        <Field
-          label="Precio particular"
-          hint="Solo para mayoristas con acuerdo propio que no sigue la lista de precios"
-        >
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            className="input-chunky"
-            value={values.precioParticular}
-            onChange={(e) => update("precioParticular", e.target.value)}
-            placeholder="$"
-          />
-        </Field>
-      )}
 
       {error && (
         <p className="text-sm font-bold text-rosa" role="alert">
