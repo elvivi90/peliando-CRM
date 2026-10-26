@@ -8,7 +8,7 @@ import {
   importarEnvio,
   type Tracking,
 } from "@/lib/services/correo-argentino";
-import type { TiendupOrder } from "@/lib/services/tiendup";
+import { fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 import { codigoProvincia } from "@/lib/provincias";
 
 /**
@@ -24,6 +24,25 @@ import { codigoProvincia } from "@/lib/provincias";
 // via (Correo rechaza un extOrderId repetido y eso se toma como exito).
 export function idCorreo(envio: Pick<Envio, "numero">) {
   return `PEL${envio.numero}`;
+}
+
+/**
+ * Numero de orden que se ve en el portal de MiCorreo: "tiendup#56" con el
+ * numero de la orden de Tiendup, o "Manual#40" con el numero del envio (las
+ * ventas no tienen numero propio). Es solo para mostrar: si Tiendup no
+ * responde, va el extOrderId.
+ */
+async function numeroOrdenCorreo(
+  envio: Pick<Envio, "numero">,
+  venta: { tiendupOrderId: number | null },
+) {
+  if (venta.tiendupOrderId === null) return `Manual#${envio.numero}`;
+  try {
+    const order = await fetchTiendupOrder(venta.tiendupOrderId, { timeoutMs: 5000 });
+    return order.number ? `tiendup#${order.number}` : idCorreo(envio);
+  } catch {
+    return idCorreo(envio);
+  }
 }
 
 export type DatosEnvio = Pick<
@@ -108,8 +127,7 @@ export async function crearEnvioEnCorreo(envioId: string) {
     const costo = await cotizarEnvio(envio.codigoPostal, envio.venta.cantidad);
     await importarEnvio({
       extOrderId: idCorreo(envio),
-      // Lo que se ve en el portal de MiCorreo para buscar el pedido.
-      orderNumber: idCorreo(envio),
+      orderNumber: await numeroOrdenCorreo(envio, envio.venta),
       cantidad: envio.venta.cantidad,
       destino: {
         nombre: envio.destinatarioNombre,

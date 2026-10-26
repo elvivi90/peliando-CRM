@@ -103,19 +103,31 @@ export default async function VentasPage({
               </thead>
               <tbody>
                 {ventas.map((v) => (
-                  <tr key={v.id} className="border-b border-navy/10 last:border-0">
+                  // Toda la fila abre el detalle: el link del cliente se estira
+                  // sobre la fila (after:inset-0) y Editar queda por encima.
+                  <tr
+                    key={v.id}
+                    className="relative border-b border-navy/10 last:border-0 hover:bg-navy/5"
+                  >
                     <td className="px-5 py-3 text-navy/70 whitespace-nowrap">{formatDate(v.fecha)}</td>
                     <td className="px-5 py-3">
-                      <Link href={`/ventas/${v.id}`} className="font-bold hover:underline">
+                      <Link
+                        href={`/ventas/${v.id}`}
+                        className="font-bold after:absolute after:inset-0"
+                      >
                         {nombreCliente(v.cliente)}
                       </Link>
+                      {v.cliente?.email && (
+                        <div className="text-xs text-navy/60 break-all">{v.cliente.email}</div>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <TipoBadge tipo={v.tipo} />
                     </td>
                     <td className="px-5 py-3">
                       {v.cantidad}
-                      {v.cantidadEntregada < v.cantidad && (
+                      {/* Con envio, la columna Envío ya muestra si falta entregar. */}
+                      {v.cantidadEntregada < v.cantidad && !v.envio && (
                         <span
                           className="text-rosa text-xs font-bold ml-1"
                           title="Entrega pendiente"
@@ -141,7 +153,7 @@ export default async function VentasPage({
                     <td className="px-5 py-3 text-right whitespace-nowrap">
                       <Link
                         href={`/ventas/${v.id}/editar`}
-                        className="text-xs font-bold text-navy/70 hover:underline"
+                        className="relative z-10 text-xs font-bold text-navy/70 hover:underline"
                       >
                         Editar
                       </Link>
