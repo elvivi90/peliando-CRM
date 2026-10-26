@@ -58,6 +58,14 @@ export function NavIcon({ icon }: { icon: NavItem["icon"] }) {
           <path d="M4 7.5 12 12l8-4.5M12 12v9" />
         </svg>
       );
+    case "truck":
+      return (
+        <svg {...common}>
+          <path d="M3 6h11v10H3zM14 9h4l3 3.5V16h-7" />
+          <circle cx="7" cy="18" r="1.6" />
+          <circle cx="17" cy="18" r="1.6" />
+        </svg>
+      );
     case "receipt":
       return (
         <svg {...common}>

@@ -9,8 +9,10 @@ import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/p
 import { parseFechaInput } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
-import { ventaSchema, type VentaInput } from "@/lib/validation/venta";
+import { envioSchema, ventaSchema, type EnvioInput, type VentaInput } from "@/lib/validation/venta";
 import { saldoConcesion } from "@/lib/services/concesion";
+import { correoConfigurado } from "@/lib/services/correo-argentino";
+import { crearEnvioEnCorreo } from "@/lib/services/envios";
 import type { TipoVenta } from "@prisma/client";
 
 type VentaData = ReturnType<typeof ventaSchema.parse>;
@@ -71,6 +73,13 @@ export async function crearVenta(input: VentaInput) {
     throw new Error("El monto cobrado no puede ser mayor al precio total.");
   }
 
+  if (data.envio && !correoConfigurado()) {
+    throw new Error("Los envíos por Correo Argentino no están configurados todavía.");
+  }
+  // Con envio la venta queda pendiente de entrega hasta que Correo la
+  // entregue (ver actualizarSeguimiento).
+  const cantidadEntregada = data.envio ? 0 : data.cantidadEntregada;
+
   const venta = await prisma.$transaction(async (tx) => {
     const nuevaVenta = await tx.venta.create({
       data: {
@@ -82,7 +91,7 @@ export async function crearVenta(input: VentaInput) {
         listaId,
         tramoId,
         cantidad: data.cantidad,
-        cantidadEntregada: data.cantidadEntregada,
+        cantidadEntregada,
         precioUnitario,
         precioTotal,
         montoCobrado: data.montoCobrado,
@@ -93,14 +102,18 @@ export async function crearVenta(input: VentaInput) {
       },
     });
 
-    if (data.cantidadEntregada > 0) {
+    if (cantidadEntregada > 0) {
       await tx.entrega.create({
         data: {
           ventaId: nuevaVenta.id,
-          cantidad: data.cantidadEntregada,
+          cantidad: cantidadEntregada,
           fecha: data.fecha,
         },
       });
+    }
+
+    if (data.envio) {
+      await tx.envio.create({ data: { ventaId: nuevaVenta.id, ...data.envio } });
     }
 
     await tx.producto.update({
@@ -110,6 +123,14 @@ export async function crearVenta(input: VentaInput) {
 
     return nuevaVenta;
   });
+
+  // Con la venta ya guardada: si Correo falla, el envio queda en
+  // ERROR_CREACION y el detalle muestra el motivo para reintentar.
+  if (data.envio) {
+    const envio = await prisma.envio.findUniqueOrThrow({ where: { ventaId: venta.id } });
+    await crearEnvioEnCorreo(envio.id);
+    revalidatePath("/correo");
+  }
 
   // Al resto del equipo; quien la cargo ya sabe que la cargo.
   after(() =>
@@ -153,6 +174,7 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
     where: { id },
     include: {
       entregas: true,
+      envio: true,
       liquidacionConcesion: {
         include: { concesion: { include: { liquidaciones: true, devoluciones: true } } },
       },
@@ -171,6 +193,13 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
         throw new Error(`En esta concesión quedan ${disponible} unidades para liquidar.`);
       }
     }
+  }
+
+  // El paquete que se importo en Correo se armo con la cantidad de entonces.
+  if (anterior.envio && anterior.envio.estado !== "ERROR_CREACION" && data.cantidad !== anterior.cantidad) {
+    throw new Error(
+      `El envío ya se dio de alta en Correo Argentino con ${anterior.cantidad} unidades: la cantidad no se puede cambiar.`,
+    );
   }
 
   const cliente = await buscarCliente(data.clienteId);
@@ -278,7 +307,8 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
         precioUnitario: precio.precioUnitario,
         precioTotal,
         montoCobrado: data.montoCobrado,
-        costoEnvio: data.costoEnvio,
+        // Con envio por Correo manda lo que cobro Correo, no lo cargado a mano.
+        costoEnvio: anterior.envio?.costoEnvioReal ?? data.costoEnvio,
         fecha: data.fecha,
       },
     });
@@ -408,6 +438,28 @@ export async function eliminarVenta(id: string) {
   if (venta.clienteId) revalidatePath(`/clientes/${venta.clienteId}`);
   if (venta.eventoId) revalidatePath(`/eventos/${venta.eventoId}`);
   redirect("/ventas");
+}
+
+// Reintenta el alta en Correo de un envio que fallo, con la direccion
+// corregida si hacia falta (por ejemplo, una orden de Tiendup sin numero de
+// calle o despues de recargar saldo).
+export async function reintentarEnvio(envioId: string, input: EnvioInput) {
+  await getCurrentUsuario();
+  const datos = envioSchema.parse(input);
+
+  const envio = await prisma.envio.findUniqueOrThrow({ where: { id: envioId } });
+  if (envio.estado !== "ERROR_CREACION") {
+    throw new Error("Este envío ya está dado de alta en Correo Argentino.");
+  }
+
+  await prisma.envio.update({ where: { id: envioId }, data: datos });
+  const resultado = await crearEnvioEnCorreo(envioId);
+
+  revalidatePath(`/ventas/${envio.ventaId}`);
+  revalidatePath("/ventas");
+  revalidatePath("/correo");
+  revalidatePath("/reportes");
+  if (resultado.estado === "ERROR_CREACION") throw new Error(resultado.errorMensaje ?? "Correo rechazó el envío.");
 }
 
 export async function registrarCobro(ventaId: string, monto: number) {

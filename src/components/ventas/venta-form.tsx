@@ -14,6 +14,12 @@ import { ModalClienteRapido, type ClienteCreado } from "@/components/ventas/moda
 import { ModalClienteMinorista } from "@/components/ventas/modal-cliente-minorista";
 import { ModalEventoRapido, type EventoCreado } from "@/components/ventas/modal-evento-rapido";
 import { ModalTramos } from "@/components/ventas/modal-tramos";
+import {
+  CamposEnvio,
+  ENVIO_VACIO,
+  envioCompleto,
+  type DatosEnvioForm,
+} from "@/components/ventas/campos-envio";
 
 type Cliente = {
   id: string;
@@ -21,6 +27,9 @@ type Cliente = {
   nombre: string;
   apellido: string;
   tipo: string;
+  // Para completar el destinatario de un envio por Correo.
+  email?: string | null;
+  telefono?: string | null;
 };
 type Producto = { id: string; nombre: string; stockActual: number };
 type Evento = { id: string; nombre: string };
@@ -54,11 +63,15 @@ export function VentaForm({
   productos,
   eventos: eventosIniciales,
   venta,
+  correoHabilitado = false,
 }: {
   clientes: Cliente[];
   productos: Producto[];
   eventos: Evento[];
   venta?: VentaEditable;
+  // Hay credenciales de Correo Argentino: se puede despachar la venta por
+  // Correo al crearla (no al editar).
+  correoHabilitado?: boolean;
 }) {
   const esConcesion = Boolean(venta?.concesion);
   const [paso, setPaso] = useState(1);
@@ -92,6 +105,9 @@ export function VentaForm({
   const [montoInput, setMontoInput] = useState<string | null>(null);
   // Lo que le cuesta a Peliando el envío; vacío = sin envío.
   const [costoEnvio, setCostoEnvio] = useState(venta?.costoEnvio ? String(venta.costoEnvio) : "");
+  // Envio por Correo Argentino: el costo lo informa Correo, no se carga a mano.
+  const [conEnvio, setConEnvio] = useState(false);
+  const [datosEnvio, setDatosEnvio] = useState<DatosEnvioForm>(ENVIO_VACIO);
 
   const [clienteCreado, setClienteCreado] = useState(false);
   const [eventoCreado, setEventoCreado] = useState(false);
@@ -187,7 +203,8 @@ export function VentaForm({
     !sinStock &&
     !excedeConcesion &&
     Boolean(productoId);
-  const puedeAvanzarPaso3 = Boolean(fecha) && montoValido && costoEnvioValido;
+  const puedeAvanzarPaso3 =
+    Boolean(fecha) && montoValido && (conEnvio ? envioCompleto(datosEnvio) : costoEnvioValido);
 
   function irA(n: number) {
     setError(null);
@@ -241,6 +258,21 @@ export function VentaForm({
     setModal(null);
   }
 
+  // Al activar el envio se completa el destinatario con el cliente elegido
+  // (si todavia no se cargo uno).
+  function handleConEnvio(activo: boolean) {
+    setConEnvio(activo);
+    const c = clientes.find((x) => x.id === (modo === "MAYORISTA" ? clienteId : clienteMinoristaId));
+    if (activo && c && !datosEnvio.destinatarioNombre) {
+      setDatosEnvio({
+        ...datosEnvio,
+        destinatarioNombre: nombreCliente(c),
+        destinatarioEmail: c.email ?? "",
+        destinatarioTelefono: c.telefono ?? "",
+      });
+    }
+  }
+
   function handleTramoAplicado(id: string | null) {
     setTramoElegido(id);
     setPrecioEditado(null);
@@ -280,8 +312,9 @@ export function VentaForm({
           precioUnitarioManual: precioManual,
           tramoId: tramoElegido ?? "",
           montoCobrado: montoFinal || "0",
-          costoEnvio: costoEnvio || "0",
+          costoEnvio: conEnvio ? "0" : costoEnvio || "0",
           fecha,
+          envio: conEnvio ? datosEnvio : undefined,
         };
         if (venta) await actualizarVenta(venta.id, input, mantenerPrecio);
         else await crearVenta(input);
@@ -543,21 +576,42 @@ export function VentaForm({
               )}
             </Campo>
 
-            <Campo label="Costo de envío">
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                placeholder="Sin envío"
-                className="input-chunky w-40"
-                value={costoEnvio}
-                onChange={(e) => setCostoEnvio(e.target.value)}
-              />
-              <span className="text-xs text-navy/55">
-                Lo paga Peliando: no cambia el precio y suma como gasto del mes.
-              </span>
-            </Campo>
+            {correoHabilitado && !venta && (
+              <label className="flex items-center gap-2.5 rounded-xl border-2 border-navy px-3.5 py-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-navy"
+                  checked={conEnvio}
+                  onChange={(e) => handleConEnvio(e.target.checked)}
+                />
+                <span>
+                  <span className="block font-extrabold text-sm">Enviar por Correo Argentino</span>
+                  <span className="block text-xs text-navy/60">
+                    Se da de alta en Correo al registrar la venta
+                  </span>
+                </span>
+              </label>
+            )}
+
+            {conEnvio ? (
+              <CamposEnvio datos={datosEnvio} onChange={setDatosEnvio} />
+            ) : (
+              <Campo label="Costo de envío">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Sin envío"
+                  className="input-chunky w-40"
+                  value={costoEnvio}
+                  onChange={(e) => setCostoEnvio(e.target.value)}
+                />
+                <span className="text-xs text-navy/55">
+                  Lo paga Peliando: no cambia el precio y suma como gasto del mes.
+                </span>
+              </Campo>
+            )}
 
             <Navegacion onAtras={() => irA(2)} siguienteDeshabilitado={!puedeAvanzarPaso3} />
           </form>
@@ -605,8 +659,15 @@ export function VentaForm({
               <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
               {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
               <FilaResumen label={venta ? "Cobrado" : "Cobrado ahora"} value={formatMoney(montoNum)} />
-              {costoEnvioNum > 0 && (
-                <FilaResumen label="Costo de envío" value={formatMoney(costoEnvioNum)} />
+              {conEnvio ? (
+                <FilaResumen
+                  label="Envío"
+                  value={`Correo Argentino a ${datosEnvio.localidad.trim()}`}
+                />
+              ) : (
+                costoEnvioNum > 0 && (
+                  <FilaResumen label="Costo de envío" value={formatMoney(costoEnvioNum)} />
+                )
               )}
             </dl>
 
@@ -626,7 +687,7 @@ export function VentaForm({
                 ← Atrás
               </button>
               <button type="button" onClick={registrar} disabled={pending} className="btn-primary">
-                {pending ? "Guardando..." : venta ? "✓ Guardar cambios" : "✓ Registrar venta"}
+                {pending ? (conEnvio ? "Dando de alta el envío..." : "Guardando...") : venta ? "✓ Guardar cambios" : "✓ Registrar venta"}
               </button>
             </div>
           </div>

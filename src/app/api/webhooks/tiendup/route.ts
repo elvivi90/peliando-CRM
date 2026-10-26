@@ -7,6 +7,8 @@ import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
 import { geocodificarPendientes } from "@/lib/services/geocoding";
 import { envioCompletado, fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
+import { correoConfigurado } from "@/lib/services/correo-argentino";
+import { crearEnvioEnCorreo, datosEnvioTiendup } from "@/lib/services/envios";
 
 /**
  * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
@@ -194,6 +196,11 @@ export async function POST(request: NextRequest) {
         }
       : { envioLocalidad: null, envioProvincia: null };
 
+  // Envio a domicilio: el CRM lo da de alta en Correo Argentino (antes se
+  // cargaba a mano en el portal). Si ya figura despachado en Tiendup, se
+  // cargo por fuera y no se vuelve a crear.
+  const datosEnvio = correoConfigurado() && !entregada ? datosEnvioTiendup(order) : null;
+
   try {
     const venta = await prisma.$transaction(async (tx) => {
       const nuevaVenta = await tx.venta.create({
@@ -218,13 +225,21 @@ export async function POST(request: NextRequest) {
       if (entregada) {
         await tx.entrega.create({ data: { ventaId: nuevaVenta.id, cantidad, fecha } });
       }
+      const envio = datosEnvio
+        ? await tx.envio.create({ data: { ventaId: nuevaVenta.id, ...datosEnvio } })
+        : null;
       await tx.producto.update({
         where: { id: producto.id },
         data: { stockActual: { decrement: cantidad } },
       });
 
-      return nuevaVenta;
+      return { ...nuevaVenta, envioId: envio?.id ?? null };
     });
+
+    // Fuera de la transaccion: un error de Correo no frena la venta (queda
+    // en ERROR_CREACION y se reintenta desde el detalle).
+    const envioId = venta.envioId;
+    if (envioId) after(() => crearEnvioEnCorreo(envioId));
 
     // Solo aca y no en los caminos de duplicado: un reintento de Tiendup no
     // tiene que volver a avisar la misma venta.

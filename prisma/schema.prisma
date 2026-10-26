@@ -63,9 +63,10 @@ model Usuario {
   email     String   @unique
   createdAt DateTime @default(now())
 
-  ventas      Venta[]
-  gastos      Gasto[]
-  comentarios Comentario[]
+  ventas         Venta[]
+  gastos         Gasto[]
+  comentarios    Comentario[]
+  recargasCorreo RecargaCorreo[]
 
   suscripcionesPush SuscripcionPush[]
 
@@ -96,7 +97,7 @@ model Cliente {
   nombreNegocio    String?
   nombre           String
   apellido         String
-  email            String?     @unique
+  email            String?         @unique
   telefono         String?
   direccion        String?
   // Usuario de Instagram sin la @ (solo mayoristas y distribuidores).
@@ -235,6 +236,7 @@ model Venta {
 
   entregas             Entrega[]
   liquidacionConcesion LiquidacionConcesion?
+  envio                Envio?
 
   @@index([fecha])
   @@index([tipo])
@@ -321,6 +323,78 @@ model Gasto {
   @@index([categoria])
   @@index([tipo])
   @@map("gastos")
+}
+
+// POR_ENVIAR y ENVIADO se muestran en amarillo, ENTREGADO en verde y
+// ERROR_CREACION en rojo (se puede reintentar desde el detalle de la venta).
+enum EstadoEnvio {
+  POR_ENVIAR
+  ENVIADO
+  ENTREGADO
+  ERROR_CREACION
+}
+
+// Envio por Correo Argentino (API MiCorreo, ver lib/services/correo-argentino.ts).
+// Como maximo uno por venta. Lo crea el CRM para toda venta con envio a
+// domicilio: las de Tiendup (direccion de la orden) y las manuales (direccion
+// cargada en el formulario). Un retiro o una entrega en evento no lo generan.
+// Si el alta en Correo falla, la venta se guarda igual y el envio queda en
+// ERROR_CREACION con el mensaje de la API.
+model Envio {
+  id      String @id @default(uuid())
+  ventaId String @unique
+  venta   Venta  @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  // Se manda como extOrderId a Correo, que rechaza importar dos veces el
+  // mismo: un reintento no puede duplicar el envio.
+  numero  Int    @unique @default(autoincrement())
+
+  estado         EstadoEnvio @default(POR_ENVIAR)
+  // Null hasta que Correo lo informe (el alta de MiCorreo no lo devuelve).
+  trackingNumber String?
+  // Lo que cobra Correo (la cotizacion al dar de alta). Reemplaza a
+  // Venta.costoEnvio, que se pisa con este valor para que Reportes y
+  // Eventos lo cuenten como gasto.
+  costoEnvioReal Decimal?    @db.Decimal(12, 2)
+  errorMensaje   String?
+
+  destinatarioNombre   String
+  destinatarioEmail    String
+  destinatarioTelefono String?
+  calle                String
+  numeroCalle          String
+  piso                 String?
+  departamento         String?
+  // Barrio o referencia para encontrar la casa (en Tiendup, "entre calles").
+  // MiCorreo no tiene campo para esto: va al final de la calle.
+  barrio               String?
+  localidad            String
+  // Codigo de una letra de Correo (B = Buenos Aires, C = CABA, ...).
+  provincia            String
+  codigoPostal         String
+
+  ultimoEvento           String?
+  ultimaConsultaTracking DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([estado])
+  @@map("envios")
+}
+
+// Saldo de la cuenta de Correo Argentino: ninguna API lo informa, asi que el
+// CRM lo estima como recargas menos el costo de los envios creados (ver
+// saldoCorreo en lib/services/envios.ts). Cada recarga hecha en el portal de
+// Correo se registra a mano aca.
+model RecargaCorreo {
+  id        String   @id @default(uuid())
+  monto     Decimal  @db.Decimal(12, 2)
+  fecha     DateTime
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([fecha])
+  @@map("recargas_correo")
 }
 
 // Coordenadas ya buscadas para el mapa de ventas (Nominatim/OpenStreetMap),

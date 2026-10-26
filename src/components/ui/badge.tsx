@@ -35,6 +35,26 @@ export function EstadoBadge({ estado }: { estado: string }) {
   );
 }
 
+// Estado de un envio por Correo Argentino: amarillo mientras viaja, verde
+// entregado, rojo si fallo el alta.
+const ENVIO_ESTILO: Record<string, { color: string; label: string }> = {
+  POR_ENVIAR: { color: "bg-amarillo/30 text-navy", label: "Por enviar" },
+  ENVIADO: { color: "bg-amarillo text-navy", label: "Enviado" },
+  ENTREGADO: { color: "bg-emerald-600/15 text-emerald-800", label: "Entregado" },
+  ERROR_CREACION: { color: "bg-red-600/15 text-red-700", label: "Error" },
+};
+
+export function EnvioBadge({ estado }: { estado: string }) {
+  const estilo = ENVIO_ESTILO[estado] ?? { color: "bg-navy/10 text-navy", label: estado };
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold whitespace-nowrap ${estilo.color}`}
+    >
+      {estilo.label}
+    </span>
+  );
+}
+
 export function TipoGastoBadge({ tipo }: { tipo: string }) {
   const inversion = tipo === "INVERSION";
   return (

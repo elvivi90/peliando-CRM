@@ -12,6 +12,7 @@ export type NavItem = {
     | "receipt"
     | "chart"
     | "box"
+    | "truck"
     | "more";
 };
 
@@ -25,6 +26,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { href: "/gastos", label: "Gastos", icon: "receipt" },
   { href: "/reportes", label: "Reportes", icon: "chart" },
   { href: "/productos", label: "Productos", icon: "box" },
+  { href: "/correo", label: "Correo", icon: "truck" },
 ];
 
 export const MOBILE_NAV: NavItem[] = [
@@ -41,4 +43,5 @@ export const MAS_NAV: NavItem[] = [
   { href: "/gastos", label: "Gastos", icon: "receipt" },
   { href: "/reportes", label: "Reportes", icon: "chart" },
   { href: "/productos", label: "Productos", icon: "box" },
+  { href: "/correo", label: "Correo Argentino", icon: "truck" },
 ];

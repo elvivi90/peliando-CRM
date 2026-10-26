@@ -10,6 +10,7 @@ import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
 import { OrdenTiendup, OrdenTiendupCargando } from "@/components/ventas/orden-tiendup";
+import { EnvioPanel } from "@/components/ventas/envio-panel";
 
 export default async function VentaDetailPage({
   params,
@@ -27,6 +28,7 @@ export default async function VentaDetailPage({
       evento: true,
       tramo: true,
       entregas: { orderBy: { fecha: "desc" } },
+      envio: true,
     },
   });
 
@@ -34,6 +36,7 @@ export default async function VentaDetailPage({
 
   const usuario = await getCurrentUsuario();
   const puedeEliminar = esAdminPrincipal(usuario);
+  const envio = venta.envio;
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -85,6 +88,19 @@ export default async function VentaDetailPage({
           </div>
         )}
       </div>
+
+      {envio && (
+        <EnvioPanel
+          envio={{
+            ...envio,
+            destinatarioTelefono: envio.destinatarioTelefono ?? "",
+            piso: envio.piso ?? "",
+            departamento: envio.departamento ?? "",
+            barrio: envio.barrio ?? "",
+            costoEnvioReal: envio.costoEnvioReal?.toNumber() ?? null,
+          }}
+        />
+      )}
 
       {venta.tiendupOrderId !== null && (
         <Suspense fallback={<OrdenTiendupCargando orderId={venta.tiendupOrderId} />}>

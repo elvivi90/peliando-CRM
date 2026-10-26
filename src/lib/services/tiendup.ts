@@ -26,6 +26,8 @@ export type TiendupAddress = {
   street?: string | null;
   number?: string | null;
   floor?: string | null;
+  // "Entre calles": los clientes suelen poner el barrio.
+  intersections?: string | null;
   city?: string | null;
   zip_code?: string | null;
   state?: string | null;

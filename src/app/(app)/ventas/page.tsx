@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
-import { TipoBadge } from "@/components/ui/badge";
+import { EnvioBadge, TipoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import type { TipoVenta } from "@prisma/client";
@@ -32,7 +32,7 @@ export default async function VentasPage({
     },
     orderBy: { fecha: "desc" },
     take: 100,
-    include: { cliente: true, producto: true, evento: true },
+    include: { cliente: true, producto: true, evento: true, envio: { select: { estado: true } } },
   });
 
   return (
@@ -92,6 +92,9 @@ export default async function VentasPage({
                   <th className="px-5 py-3 font-extrabold text-xs uppercase tracking-wide text-navy/60">
                     Total
                   </th>
+                  <th className="px-5 py-3 font-extrabold text-xs uppercase tracking-wide text-navy/60">
+                    Envío
+                  </th>
                   <th className="px-5 py-3 font-extrabold text-xs uppercase tracking-wide text-navy/60 hidden md:table-cell">
                     Evento
                   </th>
@@ -128,6 +131,9 @@ export default async function VentasPage({
                           ⏳
                         </span>
                       )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {v.envio ? <EnvioBadge estado={v.envio.estado} /> : <span className="text-navy/40">—</span>}
                     </td>
                     <td className="px-5 py-3 text-navy/60 hidden md:table-cell">
                       {v.evento?.nombre ?? "—"}

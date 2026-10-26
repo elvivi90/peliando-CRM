@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { VentaForm } from "@/components/ventas/venta-form";
 import { EmptyState } from "@/components/ui/empty-state";
+import { correoConfigurado } from "@/lib/services/correo-argentino";
 
 export default async function NuevaVentaPage() {
   const [clientes, productos, eventos, listaActiva] = await Promise.all([
@@ -10,7 +11,15 @@ export default async function NuevaVentaPage() {
     // opcional de la venta rapida.
     prisma.cliente.findMany({
       orderBy: [{ apellido: "asc" }, { nombre: "asc" }],
-      select: { id: true, nombreNegocio: true, nombre: true, apellido: true, tipo: true },
+      select: {
+        id: true,
+        nombreNegocio: true,
+        nombre: true,
+        apellido: true,
+        tipo: true,
+        email: true,
+        telefono: true,
+      },
     }),
     prisma.producto.findMany({ orderBy: { nombre: "asc" } }),
     prisma.evento.findMany({ orderBy: { fecha: "desc" }, take: 20 }),
@@ -43,6 +52,7 @@ export default async function NuevaVentaPage() {
           clientes={clientes}
           productos={productos}
           eventos={eventos.map((e) => ({ id: e.id, nombre: e.nombre }))}
+          correoHabilitado={correoConfigurado()}
         />
       )}
     </div>
