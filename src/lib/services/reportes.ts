@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { Prisma, type FormaPago } from "@prisma/client";
 import {
   startOfMonth,
   endOfMonth,
@@ -17,10 +17,13 @@ type VentaPeriodo = {
   precioTotal: Prisma.Decimal;
   costoEnvio: Prisma.Decimal;
   cantidad: number;
+  formaPago: FormaPago | null;
   pagoMercadoPago:
     | (NonNullable<Parameters<typeof costoCobro>[0]> & {
         neto: Prisma.Decimal;
         fechaLiberacion: Date | null;
+        tipoMedio: string;
+        cuotas: number;
       })
     | null;
 };
@@ -88,7 +91,11 @@ async function resumirPeriodo(inicio: Date, fin: Date) {
     totalPorTipo[v.tipo] = totalPorTipo[v.tipo].plus(v.precioTotal);
   }
 
-  return { ventas, gastos, resumen: { ...totales(ventas, gastos), totalPorTipo } };
+  return {
+    ventas,
+    gastos,
+    resumen: { ...totales(ventas, gastos), totalPorTipo, mediosPago: distribucionMedios(ventas) },
+  };
 }
 
 export async function getResumenMes(anio: number, mes: number) {
@@ -186,14 +193,84 @@ export async function getResumenInversion() {
   };
 }
 
-// Margen por unidad de un periodo (mes o año): precio promedio cobrado por
-// unidad en ese periodo
-// (todas las ventas: minorista, mayorista, distribuidor y concesion) menos
-// el costo unitario promedio historico de produccion.
+/**
+ * Margen promedio por unidad de un periodo (mes o año), con lo que cuesta
+ * cada venta ademas de producirla: precio promedio cobrado por unidad (todas
+ * las ventas: minorista, mayorista, distribuidor y concesion) menos el costo
+ * unitario promedio historico de produccion, el envio y lo que se lleva
+ * Mercado Pago (comision y cuotas), repartidos por unidad. Los gastos
+ * operativos no entran: no dependen de cuantas unidades se venden (estan en
+ * el resultado neto).
+ */
 export function margenReal(
-  resumenMes: { totalVentas: Prisma.Decimal; unidadesVendidas: number },
+  resumen: {
+    totalVentas: Prisma.Decimal;
+    totalEnvios: Prisma.Decimal;
+    totalComisiones: Prisma.Decimal;
+    unidadesVendidas: number;
+  },
   costoUnitarioPromedio: Prisma.Decimal | null,
 ) {
-  if (!costoUnitarioPromedio || resumenMes.unidadesVendidas === 0) return null;
-  return resumenMes.totalVentas.div(resumenMes.unidadesVendidas).minus(costoUnitarioPromedio);
+  if (!costoUnitarioPromedio || resumen.unidadesVendidas === 0) return null;
+  const u = resumen.unidadesVendidas;
+  const precio = resumen.totalVentas.div(u);
+  const envio = resumen.totalEnvios.div(u);
+  const mercadoPago = resumen.totalComisiones.div(u);
+  const margen = precio.minus(costoUnitarioPromedio).minus(envio).minus(mercadoPago);
+  return {
+    precio,
+    produccion: costoUnitarioPromedio,
+    envio,
+    mercadoPago,
+    margen,
+    // Sobre el precio promedio: que parte de cada venta le queda a Peliando.
+    porcentaje: precio.gt(0) ? margen.div(precio).times(100) : null,
+  };
+}
+
+// Medios de pago del grafico de Reportes, en el orden fijo de sus colores.
+export const MEDIOS_REPORTE = [
+  "Tarjeta en cuotas",
+  "Tarjeta en 1 pago",
+  "Dinero en cuenta",
+  "Transferencia",
+  "Efectivo",
+  "Posnet",
+  "Sin especificar",
+] as const;
+export type MedioReporte = (typeof MEDIOS_REPORTE)[number];
+
+const MEDIO_DE_FORMA_PAGO: Record<FormaPago, MedioReporte> = {
+  TRANSFERENCIA: "Transferencia",
+  EFECTIVO: "Efectivo",
+  POSNET: "Posnet",
+};
+
+// Medio de una venta: el del cobro de Mercado Pago si lo tiene (ventas de
+// Tiendup), si no la forma de pago cargada (o la transferencia de Tiendup).
+function medioDeVenta(v: Pick<VentaPeriodo, "formaPago" | "pagoMercadoPago">): MedioReporte {
+  const p = v.pagoMercadoPago;
+  if (p) {
+    if (p.tipoMedio === "account_money") return "Dinero en cuenta";
+    if (p.tipoMedio === "credit_card" && p.cuotas > 1) return "Tarjeta en cuotas";
+    return "Tarjeta en 1 pago";
+  }
+  return v.formaPago ? MEDIO_DE_FORMA_PAGO[v.formaPago] : "Sin especificar";
+}
+
+/** Cuantas ventas y cuanta plata (precio de venta) entraron por cada medio. */
+function distribucionMedios(ventas: Pick<VentaPeriodo, "formaPago" | "pagoMercadoPago" | "precioTotal">[]) {
+  const porMedio = new Map<MedioReporte, { ventas: number; monto: Prisma.Decimal }>();
+  for (const v of ventas) {
+    const medio = medioDeVenta(v);
+    const actual = porMedio.get(medio) ?? { ventas: 0, monto: new Prisma.Decimal(0) };
+    actual.ventas++;
+    actual.monto = actual.monto.plus(v.precioTotal);
+    porMedio.set(medio, actual);
+  }
+  return MEDIOS_REPORTE.filter((m) => porMedio.has(m)).map((medio) => ({
+    medio,
+    ventas: porMedio.get(medio)!.ventas,
+    monto: porMedio.get(medio)!.monto.toNumber(),
+  }));
 }

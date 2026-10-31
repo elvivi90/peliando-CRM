@@ -7,6 +7,7 @@ import { geocodificarPendientes } from "@/lib/services/geocoding";
 import { StatCard } from "@/components/ui/stat-card";
 import { VentasChart } from "@/components/dashboard/ventas-chart";
 import { ComparacionChart } from "@/components/dashboard/comparacion-chart";
+import { MediosPagoChart } from "@/components/reportes/medios-pago-chart";
 import { formatMoney } from "@/lib/format";
 import {
   getResumenMes,
@@ -156,11 +157,61 @@ export default async function ReportesPage({
         />
         <StatCard
           label={`Margen real (${anual ? anioSel : `${MESES[mesSel - 1].slice(0, 3)} ${anioSel}`})`}
-          value={margen ? `${formatMoney(margen)} c/u` : "—"}
-          hint="precio venta − costo unitario"
+          value={margen ? `${formatMoney(margen.margen)} c/u` : "—"}
+          hint={
+            margen?.porcentaje
+              ? `${margen.porcentaje.toFixed(0)}% del precio, ya con envío y Mercado Pago`
+              : "precio − producción, envío y Mercado Pago"
+          }
           stripe="amarillo"
-          hintColor={margen?.lt(0) ? "rosa" : undefined}
+          hintColor={margen?.margen.lt(0) ? "rosa" : undefined}
         />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="card-chunky p-5 lg:p-6">
+          <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
+            Medios de pago — {etiquetaPeriodo}
+          </div>
+          {resumen.mediosPago.length === 0 ? (
+            <p className="text-sm text-navy/60">No hay ventas en este período.</p>
+          ) : (
+            <MediosPagoChart data={resumen.mediosPago} />
+          )}
+        </div>
+
+        <div className="card-chunky p-5 lg:p-6">
+          <div className="text-xs font-black uppercase tracking-wide text-navy/55 mb-4">
+            Margen promedio por unidad — {etiquetaPeriodo}
+          </div>
+          {margen ? (
+            <dl className="flex flex-col gap-2 text-sm">
+              <FilaMargen label="Precio promedio de venta" valor={formatMoney(margen.precio)} />
+              <FilaMargen label="Costo de producción" valor={`− ${formatMoney(margen.produccion)}`} />
+              <FilaMargen label="Envío" valor={`− ${formatMoney(margen.envio)}`} />
+              <FilaMargen label="Mercado Pago (comisión y cuotas)" valor={`− ${formatMoney(margen.mercadoPago)}`} />
+              <div className="flex justify-between gap-3 border-t-2 border-navy/30 pt-2 mt-1 font-black">
+                <dt>Margen por unidad</dt>
+                <dd className={`whitespace-nowrap ${margen.margen.lt(0) ? "text-rosa" : ""}`}>
+                  {formatMoney(margen.margen)}
+                  {margen.porcentaje && (
+                    <span className="text-navy/60 font-bold"> · {margen.porcentaje.toFixed(0)}%</span>
+                  )}
+                </dd>
+              </div>
+              <p className="text-xs text-navy/55 mt-1">
+                Promedio de las {resumen.unidadesVendidas} unidades del período. Los gastos operativos
+                no entran: están en el resultado neto.
+              </p>
+            </dl>
+          ) : (
+            <p className="text-sm text-navy/60">
+              {costoUnitario
+                ? "No hay unidades vendidas en este período."
+                : "Falta cargar una tirada con unidades para saber el costo de producción."}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="card-chunky p-5 lg:p-6">
@@ -317,6 +368,15 @@ export default async function ReportesPage({
       <Link href="/dashboard" className="text-sm font-extrabold underline decoration-2 self-start">
         ← Volver al dashboard
       </Link>
+    </div>
+  );
+}
+
+function FilaMargen({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-navy/70">{label}</dt>
+      <dd className="font-semibold whitespace-nowrap">{valor}</dd>
     </div>
   );
 }

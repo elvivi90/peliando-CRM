@@ -222,6 +222,9 @@ export async function POST(request: NextRequest) {
           precioUnitario,
           precioTotal,
           montoCobrado: precioTotal,
+          // Las pagadas por Mercado Pago no lo necesitan: el medio sale del
+          // cobro que trae el cron pagos-mercadopago.
+          formaPago: /transferencia/i.test(order.gateway?.name ?? "") ? "TRANSFERENCIA" : null,
           origen: "WEBHOOK_TIENDUP",
           fecha,
           descripcion,

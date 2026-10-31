@@ -131,7 +131,9 @@ export default async function VentaDetailPage({
         )}
       </div>
 
-      {venta.tiendupOrderId !== null && !venta.pagoMercadoPago ? (
+      {/* Venta de Tiendup sin cobro de Mercado Pago ni forma de pago guardada:
+          el medio se consulta en la orden. */}
+      {venta.tiendupOrderId !== null && !venta.pagoMercadoPago && !venta.formaPago ? (
         <Suspense
           fallback={
             <PagoPanel precioTotal={venta.precioTotal} montoCobrado={venta.montoCobrado} pago={null} />
