@@ -35,11 +35,11 @@ export function EstadoBadge({ estado }: { estado: string }) {
   );
 }
 
-// Estado de un envio por Correo Argentino: amarillo mientras viaja, verde
-// entregado, rojo si fallo el alta.
+// Estado de un envio: amarillo mientras no se despacho, verde enviado o
+// entregado, rojo si fallo el alta en Correo.
 const ENVIO_ESTILO: Record<string, { color: string; label: string }> = {
-  POR_ENVIAR: { color: "bg-amarillo/30 text-navy", label: "Por enviar" },
-  ENVIADO: { color: "bg-amarillo text-navy", label: "Enviado" },
+  POR_ENVIAR: { color: "bg-amarillo text-navy", label: "Por enviar" },
+  ENVIADO: { color: "bg-emerald-600/15 text-emerald-800", label: "Enviado" },
   ENTREGADO: { color: "bg-emerald-600/15 text-emerald-800", label: "Entregado" },
   ERROR_CREACION: { color: "bg-red-600/15 text-red-700", label: "Error" },
 };

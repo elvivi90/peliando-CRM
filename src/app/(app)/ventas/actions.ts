@@ -129,7 +129,6 @@ export async function crearVenta(input: VentaInput) {
   if (data.envio) {
     const envio = await prisma.envio.findUniqueOrThrow({ where: { ventaId: venta.id } });
     await crearEnvioEnCorreo(envio.id);
-    revalidatePath("/correo");
   }
 
   // Al resto del equipo; quien la cargo ya sabe que la cargo.
@@ -457,7 +456,6 @@ export async function reintentarEnvio(envioId: string, input: EnvioInput) {
 
   revalidatePath(`/ventas/${envio.ventaId}`);
   revalidatePath("/ventas");
-  revalidatePath("/correo");
   revalidatePath("/reportes");
   if (resultado.estado === "ERROR_CREACION") throw new Error(resultado.errorMensaje ?? "Correo rechazó el envío.");
 }

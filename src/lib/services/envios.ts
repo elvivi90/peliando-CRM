@@ -1,4 +1,4 @@
-import { Prisma, type EstadoEnvio, type Envio } from "@prisma/client";
+import type { EstadoEnvio, Envio } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   CorreoError,
@@ -223,22 +223,4 @@ export async function actualizarSeguimiento(envio: Envio) {
     }
     return true;
   });
-}
-
-/**
- * Saldo estimado de la cuenta de Correo: recargas registradas menos el costo
- * de los envios dados de alta. No es el saldo real de Correo (no hay API para
- * consultarlo): se desalinea si se opera por fuera del CRM.
- */
-export async function saldoCorreo() {
-  const [recargas, envios] = await Promise.all([
-    prisma.recargaCorreo.aggregate({ _sum: { monto: true } }),
-    prisma.envio.aggregate({
-      _sum: { costoEnvioReal: true },
-      where: { estado: { not: "ERROR_CREACION" } },
-    }),
-  ]);
-  const recargado = recargas._sum.monto ?? new Prisma.Decimal(0);
-  const gastado = envios._sum.costoEnvioReal ?? new Prisma.Decimal(0);
-  return { recargado, gastado, saldo: recargado.minus(gastado) };
 }

@@ -163,8 +163,16 @@ export async function POST(request: NextRequest) {
   const [cliente, usuarioSistema] = await Promise.all([
     prisma.cliente.upsert({
       where: { email: order.customer.email },
+      // Un cliente que ya existe conserva sus datos tal cual (el telefono
+      // solo se guarda al crearlo; se muestra en el detalle de la venta).
       update: {},
-      create: { nombre, apellido, email: order.customer.email, tipo: "MINORISTA" },
+      create: {
+        nombre,
+        apellido,
+        email: order.customer.email,
+        telefono: order.customer.phone?.trim() || null,
+        tipo: "MINORISTA",
+      },
     }),
     prisma.usuario.upsert({
       where: { authId: SISTEMA_AUTH_ID },

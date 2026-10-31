@@ -237,6 +237,7 @@ model Venta {
   entregas             Entrega[]
   liquidacionConcesion LiquidacionConcesion?
   envio                Envio?
+  pagoMercadoPago      PagoMercadoPago?
 
   @@index([fecha])
   @@index([tipo])
@@ -325,7 +326,7 @@ model Gasto {
   @@map("gastos")
 }
 
-// POR_ENVIAR y ENVIADO se muestran en amarillo, ENTREGADO en verde y
+// POR_ENVIAR se muestra en amarillo, ENVIADO y ENTREGADO en verde y
 // ERROR_CREACION en rojo (se puede reintentar desde el detalle de la venta).
 enum EstadoEnvio {
   POR_ENVIAR
@@ -381,10 +382,9 @@ model Envio {
   @@map("envios")
 }
 
-// Saldo de la cuenta de Correo Argentino: ninguna API lo informa, asi que el
-// CRM lo estima como recargas menos el costo de los envios creados (ver
-// saldoCorreo en lib/services/envios.ts). Cada recarga hecha en el portal de
-// Correo se registra a mano aca.
+// Recargas del saldo de la cuenta de Correo Argentino, que se cargaban a mano
+// para estimar el saldo. SIN USO desde 2026-10-31 (se saco la pagina
+// /correo): la tabla queda con lo registrado hasta entonces.
 model RecargaCorreo {
   id        String   @id @default(uuid())
   monto     Decimal  @db.Decimal(12, 2)
@@ -395,6 +395,43 @@ model RecargaCorreo {
 
   @@index([fecha])
   @@map("recargas_correo")
+}
+
+// Cobro por Mercado Pago de una venta de Tiendup (consumidores finales que
+// pagan en el checkout de Tiendup), copiado de la API de Payments por el
+// cron pagos-mercadopago (ver lib/services/pagos-mercadopago.ts). Solo los
+// pagos aprobados alguna vez: los rechazados (reintentos del comprador) no
+// se guardan. Las comisiones suman como gasto del mes en Reportes.
+model PagoMercadoPago {
+  id          String @id @default(uuid())
+  // Id del pago en Mercado Pago: el mismo pago no se guarda dos veces.
+  mpPaymentId String @unique
+  ventaId     String @unique
+  venta       Venta  @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+
+  // El de Mercado Pago: approved, y despues refunded, charged_back, ...
+  estado              String
+  // credit_card, debit_card, account_money
+  tipoMedio           String
+  // visa, naranja, debvisa, account_money, ...
+  medioPago           String
+  cuotas              Int
+  monto               Decimal  @db.Decimal(12, 2)
+  // Comision fija de Mercado Pago (mercadopago_fee).
+  comisionMercadoPago Decimal  @db.Decimal(12, 2)
+  // Lo que cobra Mercado Pago por ofrecer cuotas (financing_fee).
+  costoFinanciacion   Decimal  @db.Decimal(12, 2)
+  // Lo que acredita Mercado Pago. Puede ser menos que monto menos las
+  // comisiones (retenciones que no figuran como comision).
+  neto                Decimal  @db.Decimal(12, 2)
+  fechaAprobado       DateTime
+  // Cuando la plata queda disponible para usar.
+  fechaLiberacion     DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([fechaLiberacion])
+  @@map("pagos_mercadopago")
 }
 
 // Coordenadas ya buscadas para el mapa de ventas (Nominatim/OpenStreetMap),

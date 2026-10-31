@@ -20,8 +20,23 @@ export type EnvioDetalle = DatosEnvioForm & {
 /**
  * Envio por Correo Argentino de una venta. Si el alta fallo muestra el
  * motivo y la direccion editable para reintentar.
+ *
+ * El numero de seguimiento sale de Tiendup (`trackingTiendup`, lo carga el
+ * equipo en su panel) cuando Correo no lo informo: el seguimiento de
+ * MiCorreo no encuentra los envios importados por API.
  */
-export function EnvioPanel({ envio }: { envio: EnvioDetalle }) {
+export function EnvioPanel({
+  envio,
+  trackingTiendup,
+  nombreCliente,
+  nota,
+}: {
+  envio: EnvioDetalle;
+  trackingTiendup?: string | null;
+  // El destinatario solo se muestra si no es el cliente de la venta.
+  nombreCliente?: string | null;
+  nota?: string | null;
+}) {
   const [datos, setDatos] = useState<DatosEnvioForm>(envio);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -48,12 +63,15 @@ export function EnvioPanel({ envio }: { envio: EnvioDetalle }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const seguimiento = envio.trackingNumber ?? trackingTiendup ?? null;
+  const otroDestinatario =
+    !nombreCliente || envio.destinatarioNombre.trim().toLowerCase() !== nombreCliente.trim().toLowerCase();
 
   return (
     <div className="card-chunky p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-extrabold text-sm uppercase tracking-wide text-navy/60">
-          Envío por Correo Argentino
+          Envío · Correo Argentino
         </h2>
         <EnvioBadge estado={envio.estado} />
       </div>
@@ -86,17 +104,24 @@ export function EnvioPanel({ envio }: { envio: EnvioDetalle }) {
         </>
       ) : (
         <dl className="grid grid-cols-2 gap-4 text-sm">
-          <Dato label="Seguimiento" value={envio.trackingNumber ?? "Todavía sin número"} />
-          <Dato
-            label="Costo real"
-            value={envio.costoEnvioReal !== null ? formatMoney(envio.costoEnvioReal) : "—"}
-          />
-          <div className="col-span-2">
-            <Dato label="Destinatario" value={envio.destinatarioNombre} />
-          </div>
           <div className="col-span-2">
             <Dato label="Dirección" value={direccion} />
           </div>
+          {otroDestinatario && (
+            <div className="col-span-2">
+              <Dato label="Recibe" value={envio.destinatarioNombre} />
+            </div>
+          )}
+          <Dato label="Seguimiento" value={seguimiento ?? "Todavía sin número"} />
+          <Dato
+            label="Costo del envío"
+            value={envio.costoEnvioReal !== null ? formatMoney(envio.costoEnvioReal) : "—"}
+          />
+          {nota && (
+            <div className="col-span-2">
+              <Dato label="Nota del cliente" value={nota} />
+            </div>
+          )}
           {envio.ultimoEvento && (
             <div className="col-span-2">
               <Dato label="Último movimiento" value={envio.ultimoEvento} />

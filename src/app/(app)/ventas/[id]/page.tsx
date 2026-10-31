@@ -9,8 +9,24 @@ import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
-import { OrdenTiendup, OrdenTiendupCargando } from "@/components/ventas/orden-tiendup";
+import { PagoPanel } from "@/components/ventas/pago-panel";
+import { EnvioVenta, EnvioVentaCargando } from "@/components/ventas/envio-venta";
 import { EnvioPanel } from "@/components/ventas/envio-panel";
+
+const TIPO_LABEL: Record<string, string> = {
+  MINORISTA: "Minorista",
+  MAYORISTA: "Mayorista",
+  DISTRIBUIDOR: "Distribuidor",
+};
+
+// Como se genero la venta: Tiendup (automatica), una venta rapida sin
+// cliente, una liquidacion de concesion o una carga manual a un cliente.
+function origenVenta(venta: { origen: string; tipo: string; clienteId: string | null }) {
+  if (venta.origen === "WEBHOOK_TIENDUP") return "Tiendup (automática)";
+  if (venta.tipo === "CONCESION") return "Liquidación de concesión";
+  if (!venta.clienteId) return "Venta rápida";
+  return `Manual · ${TIPO_LABEL[venta.tipo] ?? venta.tipo}`;
+}
 
 export default async function VentaDetailPage({
   params,
@@ -29,6 +45,7 @@ export default async function VentaDetailPage({
       tramo: true,
       entregas: { orderBy: { fecha: "desc" } },
       envio: true,
+      pagoMercadoPago: true,
     },
   });
 
@@ -36,12 +53,25 @@ export default async function VentaDetailPage({
 
   const usuario = await getCurrentUsuario();
   const puedeEliminar = esAdminPrincipal(usuario);
-  const envio = venta.envio;
+  const cliente = venta.cliente;
+  const nombre = cliente ? nombreCliente(cliente) : null;
+  // Los clientes de Tiendup no guardan el telefono: sale del envio.
+  const telefono = cliente?.telefono || venta.envio?.destinatarioTelefono || null;
+  const envio = venta.envio
+    ? {
+        ...venta.envio,
+        destinatarioTelefono: venta.envio.destinatarioTelefono ?? "",
+        piso: venta.envio.piso ?? "",
+        departamento: venta.envio.departamento ?? "",
+        barrio: venta.envio.barrio ?? "",
+        costoEnvioReal: venta.envio.costoEnvioReal?.toNumber() ?? null,
+      }
+    : null;
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <PageHeader
-        title={venta.cliente ? `Venta a ${nombreCliente(venta.cliente)}` : "Venta rápida"}
+        title="Detalle de la venta"
         subtitle={formatDate(venta.fecha)}
         action={
           <div className="flex items-center gap-2">
@@ -57,55 +87,62 @@ export default async function VentaDetailPage({
       />
 
       <div className="card-chunky p-5 grid grid-cols-2 gap-4">
+        {cliente ? (
+          <>
+            <div className="col-span-2">
+              <Info
+                label="Cliente"
+                value={
+                  <Link href={`/clientes/${venta.clienteId}`} className="hover:underline">
+                    {nombre}
+                  </Link>
+                }
+              />
+            </div>
+            <Info label="Teléfono" value={telefono ?? "—"} />
+            <Info label="Email" value={cliente.email ?? "—"} />
+          </>
+        ) : null}
+        <Info label="Origen" value={origenVenta(venta)} />
+        <Info label="Cargada por" value={venta.usuario.nombre} />
         <Info label="Producto" value={venta.producto.nombre} />
         <Info
-          label="Cliente"
+          label="Cantidad"
           value={
-            venta.cliente ? (
-              <Link href={`/clientes/${venta.clienteId}`} className="hover:underline">
-                {nombreCliente(venta.cliente)}
-              </Link>
-            ) : (
-              "Sin cliente"
-            )
+            venta.cantidadEntregada < venta.cantidad
+              ? `${venta.cantidad} (${venta.cantidadEntregada} entregadas)`
+              : String(venta.cantidad)
           }
         />
-        <Info label="Cantidad" value={String(venta.cantidad)} />
-        <Info label="Entregado" value={`${venta.cantidadEntregada} / ${venta.cantidad}`} />
-        <Info label="Precio unitario" value={formatMoney(venta.precioUnitario)} />
-        <Info label="Precio total" value={formatMoney(venta.precioTotal)} />
-        <Info label="Cobrado" value={`${formatMoney(venta.montoCobrado)} / ${formatMoney(venta.precioTotal)}`} />
+        {/* Siempre presente, aunque este vacia, para que Total quede debajo de Cantidad. */}
+        <Info label="Descripción" value={venta.descripcion || "—"} />
         <Info
-          label="Costo de envío"
-          value={venta.costoEnvio.gt(0) ? formatMoney(venta.costoEnvio) : "—"}
+          label="Total"
+          value={
+            venta.cantidad > 1
+              ? `${formatMoney(venta.precioTotal)} (${formatMoney(venta.precioUnitario)} c/u)`
+              : formatMoney(venta.precioTotal)
+          }
         />
-        <Info label="Evento" value={venta.evento?.nombre ?? "—"} />
-        <Info label="Cargada por" value={venta.usuario.nombre} />
-        <Info label="Origen" value={venta.origen === "WEBHOOK_TIENDUP" ? "Tiendup (automática)" : "Manual"} />
-        {venta.descripcion && (
-          <div className="col-span-2">
-            <Info label="Descripción" value={venta.descripcion} />
-          </div>
+        {venta.evento && <Info label="Evento" value={venta.evento.nombre} />}
+        {/* Costo de un envio cargado a mano (sin envio por Correo). */}
+        {!venta.envio && venta.costoEnvio.gt(0) && (
+          <Info label="Costo de envío" value={formatMoney(venta.costoEnvio)} />
         )}
       </div>
 
-      {envio && (
-        <EnvioPanel
-          envio={{
-            ...envio,
-            destinatarioTelefono: envio.destinatarioTelefono ?? "",
-            piso: envio.piso ?? "",
-            departamento: envio.departamento ?? "",
-            barrio: envio.barrio ?? "",
-            costoEnvioReal: envio.costoEnvioReal?.toNumber() ?? null,
-          }}
-        />
-      )}
+      <PagoPanel
+        precioTotal={venta.precioTotal}
+        montoCobrado={venta.montoCobrado}
+        pago={venta.pagoMercadoPago}
+      />
 
-      {venta.tiendupOrderId !== null && (
-        <Suspense fallback={<OrdenTiendupCargando orderId={venta.tiendupOrderId} />}>
-          <OrdenTiendup orderId={venta.tiendupOrderId} />
+      {venta.tiendupOrderId !== null ? (
+        <Suspense fallback={<EnvioVentaCargando envio={envio} />}>
+          <EnvioVenta tiendupOrderId={venta.tiendupOrderId} envio={envio} nombreCliente={nombre} />
         </Suspense>
+      ) : (
+        envio && <EnvioPanel envio={envio} nombreCliente={nombre} />
       )}
 
       <EntregaCobroPanel
@@ -137,9 +174,9 @@ export default async function VentaDetailPage({
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-xs font-bold text-navy/50 uppercase">{label}</div>
-      <div className="font-semibold">{value}</div>
+      <div className="font-semibold break-words">{value}</div>
     </div>
   );
 }

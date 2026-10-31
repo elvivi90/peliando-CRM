@@ -11,24 +11,59 @@ import {
   startOfDay,
 } from "date-fns";
 import { es } from "date-fns/locale";
+import { costoCobro } from "@/lib/services/pagos-mercadopago";
 
-type VentaPeriodo = { precioTotal: Prisma.Decimal; costoEnvio: Prisma.Decimal; cantidad: number };
+type VentaPeriodo = {
+  precioTotal: Prisma.Decimal;
+  costoEnvio: Prisma.Decimal;
+  cantidad: number;
+  pagoMercadoPago:
+    | (NonNullable<Parameters<typeof costoCobro>[0]> & {
+        neto: Prisma.Decimal;
+        fechaLiberacion: Date | null;
+      })
+    | null;
+};
 type GastoPeriodo = { monto: Prisma.Decimal };
 
 // Totales de un conjunto de ventas y gastos (operativos) de un periodo.
 // Gastos = gastos operativos + lo que costo enviar esas ventas
-// (Venta.costoEnvio, lo paga Peliando). La inversion de capital nunca entra
-// (ver getResumenInversion).
+// (Venta.costoEnvio, lo paga Peliando) + lo que se llevo Mercado Pago al
+// cobrarlas (comision y cuotas, ver costoCobro). La inversion de capital
+// nunca entra (ver getResumenInversion).
 function totales(ventas: VentaPeriodo[], gastos: GastoPeriodo[]) {
   const totalVentas = ventas.reduce((s, v) => s.plus(v.precioTotal), new Prisma.Decimal(0));
   const totalEnvios = ventas.reduce((s, v) => s.plus(v.costoEnvio), new Prisma.Decimal(0));
+  const totalComisiones = ventas.reduce(
+    (s, v) => s.plus(costoCobro(v.pagoMercadoPago)),
+    new Prisma.Decimal(0),
+  );
   const totalGastos = gastos
     .reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0))
-    .plus(totalEnvios);
+    .plus(totalEnvios)
+    .plus(totalComisiones);
+
+  // Lo que ya acredito Mercado Pago por las ventas del periodo: cuanto ya se
+  // puede usar y cuanto sigue retenido.
+  const ahora = new Date();
+  let mpDisponible = new Prisma.Decimal(0);
+  let mpPorLiberar = new Prisma.Decimal(0);
+  for (const { pagoMercadoPago: p } of ventas) {
+    if (!p || p.estado !== "approved") continue;
+    if (p.fechaLiberacion && p.fechaLiberacion > ahora) {
+      mpPorLiberar = mpPorLiberar.plus(p.neto);
+    } else {
+      mpDisponible = mpDisponible.plus(p.neto);
+    }
+  }
+
   return {
     totalVentas,
     totalGastos,
     totalEnvios,
+    totalComisiones,
+    mpDisponible,
+    mpPorLiberar,
     neto: totalVentas.minus(totalGastos),
     unidadesVendidas: ventas.reduce((s, v) => s + v.cantidad, 0),
     cantidadVentas: ventas.length,
@@ -37,7 +72,10 @@ function totales(ventas: VentaPeriodo[], gastos: GastoPeriodo[]) {
 
 async function resumirPeriodo(inicio: Date, fin: Date) {
   const [ventas, gastos] = await Promise.all([
-    prisma.venta.findMany({ where: { fecha: { gte: inicio, lte: fin } } }),
+    prisma.venta.findMany({
+      where: { fecha: { gte: inicio, lte: fin } },
+      include: { pagoMercadoPago: true },
+    }),
     prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: inicio, lte: fin } } }),
   ]);
 

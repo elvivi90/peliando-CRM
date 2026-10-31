@@ -110,9 +110,15 @@ export default async function ReportesPage({
           label="Total gastos"
           value={formatMoney(resumen.totalGastos)}
           hint={
-            resumen.totalEnvios.gt(0)
-              ? `operativos + ${formatMoney(resumen.totalEnvios)} de envíos`
-              : "solo operativos"
+            ["operativos"]
+              .concat(resumen.totalEnvios.gt(0) ? [`${formatMoney(resumen.totalEnvios)} de envíos`] : [])
+              .concat(
+                resumen.totalComisiones.gt(0)
+                  ? [`${formatMoney(resumen.totalComisiones)} de Mercado Pago`]
+                  : [],
+              )
+              .join(" + ")
+              .replace(/^operativos$/, "solo operativos")
           }
           stripe="rosa"
         />
@@ -120,10 +126,24 @@ export default async function ReportesPage({
           label="Resultado neto"
           value={formatMoney(resumen.neto)}
           hint="sin distorsión por inversión"
+          extra={
+            resumen.mpDisponible.gt(0) || resumen.mpPorLiberar.gt(0)
+              ? [
+                  `Disponible: ${formatMoney(resumen.mpDisponible)}`,
+                  `A liberar: ${formatMoney(resumen.mpPorLiberar)}`,
+                ]
+              : undefined
+          }
           stripe="navy"
         />
         <StatCard label="Unidades vendidas" value={String(resumen.unidadesVendidas)} stripe="azul" />
       </div>
+      <Link
+        href="/reportes/mercadopago"
+        className="text-sm font-extrabold underline decoration-2 self-start -mt-2"
+      >
+        Ver cobros de Mercado Pago →
+      </Link>
 
       <div className="flex flex-wrap gap-4">
         <StatCard

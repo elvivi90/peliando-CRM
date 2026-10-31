@@ -11,12 +11,15 @@ export function StatCard({
   hint,
   stripe,
   hintColor,
+  extra,
 }: {
   label: string;
   value: string;
   hint?: string;
   stripe: keyof typeof STRIPE_COLOR;
   hintColor?: "rosa";
+  // Lineas chicas adicionales debajo del hint.
+  extra?: string[];
 }) {
   return (
     <div className="flex-1 min-w-[150px] card-chunky overflow-hidden">
@@ -31,6 +34,13 @@ export function StatCard({
             className={`text-[13px] mt-1 ${hintColor === "rosa" ? "text-rosa font-semibold" : "text-navy/60"}`}
           >
             {hint}
+          </div>
+        )}
+        {extra && extra.length > 0 && (
+          <div className="text-xs mt-1 text-navy/60">
+            {extra.map((linea) => (
+              <div key={linea}>{linea}</div>
+            ))}
           </div>
         )}
       </div>
