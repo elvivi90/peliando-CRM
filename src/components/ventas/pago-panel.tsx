@@ -1,6 +1,7 @@
 import type { PagoMercadoPago, Prisma } from "@prisma/client";
 import { formatDate, formatMoney } from "@/lib/format";
 import { nombreMedio } from "@/lib/services/pagos-mercadopago";
+import { ordenTiendupDeVenta } from "@/components/ventas/orden-tiendup";
 
 const ESTADO_MP: Record<string, string> = {
   approved: "Aprobado",
@@ -19,10 +20,14 @@ export function PagoPanel({
   precioTotal,
   montoCobrado,
   pago,
+  medioPago,
 }: {
   precioTotal: Prisma.Decimal;
   montoCobrado: Prisma.Decimal;
   pago: PagoMercadoPago | null;
+  // Sin pago de Mercado Pago: el medio que informa Tiendup (ver PagoTiendup)
+  // o la forma de pago cargada en una venta manual.
+  medioPago?: string | null;
 }) {
   const liberado = pago?.fechaLiberacion ? pago.fechaLiberacion <= new Date() : false;
   const otros = pago
@@ -62,10 +67,33 @@ export function PagoPanel({
             />
           </>
         ) : (
-          <Dato label="Medio de pago" value="—" />
+          <Dato label="Medio de pago" value={medioPago || "—"} />
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Pago de una venta de Tiendup que todavia no tiene cobro de Mercado Pago:
+ * el medio de pago sale de la orden ("Transferencia bancaria"). Si la orden
+ * se pago por Mercado Pago, el cobro llega con el cron del dia siguiente.
+ */
+export async function PagoTiendup({
+  tiendupOrderId,
+  precioTotal,
+  montoCobrado,
+}: {
+  tiendupOrderId: number;
+  precioTotal: Prisma.Decimal;
+  montoCobrado: Prisma.Decimal;
+}) {
+  const orden = await ordenTiendupDeVenta(tiendupOrderId);
+  const gateway = orden?.gateway?.name?.trim() || null;
+  const medioPago =
+    gateway && /mercado\s*pago/i.test(gateway) ? "Mercado Pago (se actualiza a diario)" : gateway;
+  return (
+    <PagoPanel precioTotal={precioTotal} montoCobrado={montoCobrado} pago={null} medioPago={medioPago} />
   );
 }
 

@@ -43,28 +43,27 @@ function totales(ventas: VentaPeriodo[], gastos: GastoPeriodo[]) {
     .plus(totalEnvios)
     .plus(totalComisiones);
 
-  // Lo que ya acredito Mercado Pago por las ventas del periodo: cuanto ya se
-  // puede usar y cuanto sigue retenido.
+  // El resultado neto partido en lo que ya se puede usar y lo que sigue
+  // retenido: a liberar es el neto de Mercado Pago de las ventas del periodo
+  // que todavia no se libero; disponible, todo el resto (resultado neto menos
+  // a liberar), asi que siempre suman el resultado neto.
   const ahora = new Date();
-  let mpDisponible = new Prisma.Decimal(0);
-  let mpPorLiberar = new Prisma.Decimal(0);
+  let aLiberar = new Prisma.Decimal(0);
   for (const { pagoMercadoPago: p } of ventas) {
-    if (!p || p.estado !== "approved") continue;
-    if (p.fechaLiberacion && p.fechaLiberacion > ahora) {
-      mpPorLiberar = mpPorLiberar.plus(p.neto);
-    } else {
-      mpDisponible = mpDisponible.plus(p.neto);
+    if (p && p.estado === "approved" && p.fechaLiberacion && p.fechaLiberacion > ahora) {
+      aLiberar = aLiberar.plus(p.neto);
     }
   }
+  const neto = totalVentas.minus(totalGastos);
 
   return {
     totalVentas,
     totalGastos,
     totalEnvios,
     totalComisiones,
-    mpDisponible,
-    mpPorLiberar,
-    neto: totalVentas.minus(totalGastos),
+    disponible: neto.minus(aLiberar),
+    aLiberar,
+    neto,
     unidadesVendidas: ventas.reduce((s, v) => s + v.cantidad, 0),
     cantidadVentas: ventas.length,
   };

@@ -5,11 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
-import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { FORMA_PAGO_LABEL, formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
-import { PagoPanel } from "@/components/ventas/pago-panel";
+import { PagoPanel, PagoTiendup } from "@/components/ventas/pago-panel";
 import { EnvioVenta, EnvioVentaCargando } from "@/components/ventas/envio-venta";
 import { EnvioPanel } from "@/components/ventas/envio-panel";
 
@@ -131,11 +131,26 @@ export default async function VentaDetailPage({
         )}
       </div>
 
-      <PagoPanel
-        precioTotal={venta.precioTotal}
-        montoCobrado={venta.montoCobrado}
-        pago={venta.pagoMercadoPago}
-      />
+      {venta.tiendupOrderId !== null && !venta.pagoMercadoPago ? (
+        <Suspense
+          fallback={
+            <PagoPanel precioTotal={venta.precioTotal} montoCobrado={venta.montoCobrado} pago={null} />
+          }
+        >
+          <PagoTiendup
+            tiendupOrderId={venta.tiendupOrderId}
+            precioTotal={venta.precioTotal}
+            montoCobrado={venta.montoCobrado}
+          />
+        </Suspense>
+      ) : (
+        <PagoPanel
+          precioTotal={venta.precioTotal}
+          montoCobrado={venta.montoCobrado}
+          pago={venta.pagoMercadoPago}
+          medioPago={venta.formaPago ? FORMA_PAGO_LABEL[venta.formaPago] : null}
+        />
+      )}
 
       {venta.tiendupOrderId !== null ? (
         <Suspense fallback={<EnvioVentaCargando envio={envio} />}>

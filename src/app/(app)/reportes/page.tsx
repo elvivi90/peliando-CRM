@@ -126,14 +126,10 @@ export default async function ReportesPage({
           label="Resultado neto"
           value={formatMoney(resumen.neto)}
           hint="sin distorsión por inversión"
-          extra={
-            resumen.mpDisponible.gt(0) || resumen.mpPorLiberar.gt(0)
-              ? [
-                  `Disponible: ${formatMoney(resumen.mpDisponible)}`,
-                  `A liberar: ${formatMoney(resumen.mpPorLiberar)}`,
-                ]
-              : undefined
-          }
+          extra={[
+            `Disponible: ${formatMoney(resumen.disponible)}`,
+            `A liberar: ${formatMoney(resumen.aLiberar)}`,
+          ]}
           stripe="navy"
         />
         <StatCard label="Unidades vendidas" value={String(resumen.unidadesVendidas)} stripe="azul" />

@@ -41,6 +41,14 @@ enum OrigenVenta {
   WEBHOOK_TIENDUP
 }
 
+// Como pago el cliente una venta cargada a mano. Las de Tiendup no lo usan:
+// el medio sale de Mercado Pago o de la orden (ver detalle de la venta).
+enum FormaPago {
+  POSNET
+  EFECTIVO
+  TRANSFERENCIA
+}
+
 enum CategoriaGasto {
   TRANSPORTE
   COMIDA
@@ -217,6 +225,8 @@ model Venta {
   // Mirror de cantidadEntregada para pagos: permite calcular
   // saldo_pendiente_cobro en cuenta corriente sin una entidad Pago separada.
   montoCobrado      Decimal     @default(0) @db.Decimal(12, 2)
+  // Null en las de Tiendup y en las cargadas antes de este campo.
+  formaPago         FormaPago?
   // Lo que le cuesta a Peliando enviar esta venta (lo paga el negocio, no
   // el cliente): no cambia el precio y en Reportes suma como gasto del mes.
   costoEnvio        Decimal     @default(0) @db.Decimal(12, 2)

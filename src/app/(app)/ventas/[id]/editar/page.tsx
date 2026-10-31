@@ -74,6 +74,7 @@ export default async function EditarVentaPage({
           precioTotal: venta.precioTotal.toNumber(),
           montoCobrado: venta.montoCobrado.toNumber(),
           costoEnvio: venta.costoEnvio.toNumber(),
+          formaPago: venta.formaPago,
           eventoId: venta.eventoId,
           fecha: fechaInputValue(venta.fecha),
           concesion,

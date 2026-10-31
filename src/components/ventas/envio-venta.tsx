@@ -1,6 +1,7 @@
 import { EnvioBadge } from "@/components/ui/badge";
 import { EnvioPanel, type EnvioDetalle } from "@/components/ventas/envio-panel";
-import { fetchTiendupOrder, type TiendupAddress, type TiendupOrder } from "@/lib/services/tiendup";
+import { ordenTiendupDeVenta } from "@/components/ventas/orden-tiendup";
+import type { TiendupAddress } from "@/lib/services/tiendup";
 
 // Estado del envio en Tiendup (valores relevados de ordenes reales) como el
 // de EnvioBadge; lo que no este aca se muestra tal cual.
@@ -32,14 +33,7 @@ export async function EnvioVenta({
   envio: EnvioDetalle | null;
   nombreCliente: string | null;
 }) {
-  let orden: TiendupOrder | null = null;
-  if (tiendupOrderId !== null) {
-    try {
-      orden = await fetchTiendupOrder(tiendupOrderId, { timeoutMs: 8000 });
-    } catch (err) {
-      console.error(`[tiendup] envio de la orden #${tiendupOrderId}:`, err);
-    }
-  }
+  const orden = tiendupOrderId !== null ? await ordenTiendupDeVenta(tiendupOrderId) : null;
   const nota = orden?.note?.trim() || orden?.shipping?.observations?.trim() || null;
 
   if (envio) {

@@ -6,6 +6,13 @@ const currencyFormatter = new Intl.NumberFormat("es-AR", {
   maximumFractionDigits: 0,
 });
 
+// Formas de pago de una venta manual (enum FormaPago), en el orden del desplegable.
+export const FORMA_PAGO_LABEL = {
+  POSNET: "Posnet",
+  EFECTIVO: "Efectivo",
+  TRANSFERENCIA: "Transferencia",
+} as const;
+
 const dateFormatter = new Intl.DateTimeFormat("es-AR", {
   day: "2-digit",
   month: "2-digit",

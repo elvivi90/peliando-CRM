@@ -51,6 +51,11 @@ export const ventaSchema = z.object({
     .optional()
     .transform((v) => (v && v.trim() !== "" ? Number(v) : undefined)),
   montoCobrado: z.coerce.number().min(0).default(0),
+  // Vacio = sin especificar.
+  formaPago: z
+    .enum(["POSNET", "EFECTIVO", "TRANSFERENCIA", ""])
+    .optional()
+    .transform((v) => (v ? v : null)),
   // Lo que le cuesta a Peliando el envio (no lo paga el cliente).
   costoEnvio: z.coerce.number().min(0, "El costo de envío no puede ser negativo").default(0),
   // Solo al crear: la venta se despacha por Correo Argentino a esta direccion.

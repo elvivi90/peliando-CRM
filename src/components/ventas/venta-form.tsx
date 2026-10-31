@@ -7,7 +7,7 @@ import {
   previsualizarPrecio,
   type PrevisualizacionPrecio,
 } from "@/app/(app)/ventas/actions";
-import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { FORMA_PAGO_LABEL, formatDate, formatMoney, nombreCliente } from "@/lib/format";
 import { parseFechaInput, todayInputValue } from "@/lib/date";
 import { SelectorConAlta } from "@/components/ventas/selector-con-alta";
 import { ModalClienteRapido, type ClienteCreado } from "@/components/ventas/modal-cliente-rapido";
@@ -51,6 +51,7 @@ export type VentaEditable = {
   precioTotal: number;
   montoCobrado: number;
   costoEnvio: number;
+  formaPago: keyof typeof FORMA_PAGO_LABEL | null;
   eventoId: string | null;
   fecha: string;
   // Solo liquidaciones de concesion: cliente y producto quedan fijos, el
@@ -105,6 +106,7 @@ export function VentaForm({
   const [montoInput, setMontoInput] = useState<string | null>(null);
   // Lo que le cuesta a Peliando el envío; vacío = sin envío.
   const [costoEnvio, setCostoEnvio] = useState(venta?.costoEnvio ? String(venta.costoEnvio) : "");
+  const [formaPago, setFormaPago] = useState<keyof typeof FORMA_PAGO_LABEL | "">(venta?.formaPago ?? "");
   // Envio por Correo Argentino: el costo lo informa Correo, no se carga a mano.
   const [conEnvio, setConEnvio] = useState(false);
   const [datosEnvio, setDatosEnvio] = useState<DatosEnvioForm>(ENVIO_VACIO);
@@ -312,6 +314,7 @@ export function VentaForm({
           precioUnitarioManual: precioManual,
           tramoId: tramoElegido ?? "",
           montoCobrado: montoFinal || "0",
+          formaPago,
           costoEnvio: conEnvio ? "0" : costoEnvio || "0",
           fecha,
           envio: conEnvio ? datosEnvio : undefined,
@@ -516,6 +519,21 @@ export function VentaForm({
               />
             )}
 
+            <Campo label="Forma de pago">
+              <select
+                className="input-chunky"
+                value={formaPago}
+                onChange={(e) => setFormaPago(e.target.value as keyof typeof FORMA_PAGO_LABEL | "")}
+              >
+                <option value="">Sin especificar</option>
+                {Object.entries(FORMA_PAGO_LABEL).map(([valor, label]) => (
+                  <option key={valor} value={valor}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+
             <Navegacion onAtras={() => irA(1)} siguienteDeshabilitado={!puedeAvanzarPaso2} />
           </form>
         )}
@@ -656,6 +674,7 @@ export function VentaForm({
                 />
               )}
               <FilaResumen label="Precio" value={formatMoney(precioTotal)} />
+              {formaPago && <FilaResumen label="Forma de pago" value={FORMA_PAGO_LABEL[formaPago]} />}
               <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
               {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
               <FilaResumen label={venta ? "Cobrado" : "Cobrado ahora"} value={formatMoney(montoNum)} />

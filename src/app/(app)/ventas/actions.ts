@@ -95,6 +95,7 @@ export async function crearVenta(input: VentaInput) {
         precioUnitario,
         precioTotal,
         montoCobrado: data.montoCobrado,
+        formaPago: data.formaPago,
         costoEnvio: data.costoEnvio,
         descripcion: data.descripcion ?? null,
         origen: "MANUAL",
@@ -306,6 +307,7 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
         precioUnitario: precio.precioUnitario,
         precioTotal,
         montoCobrado: data.montoCobrado,
+        formaPago: data.formaPago,
         // Con envio por Correo manda lo que cobro Correo, no lo cargado a mano.
         costoEnvio: anterior.envio?.costoEnvioReal ?? data.costoEnvio,
         fecha: data.fecha,
