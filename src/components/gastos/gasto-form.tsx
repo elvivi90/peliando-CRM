@@ -14,6 +14,7 @@ const CATEGORIAS = [
   { value: "TRANSPORTE", label: "Transporte" },
   { value: "COMIDA", label: "Comida" },
   { value: "MARKETING_PRODUCCION", label: "Marketing / Producción" },
+  { value: "PUBLICIDAD", label: "Publicidad (Meta)" },
   { value: "OTROS", label: "Otros" },
 ] as const;
 

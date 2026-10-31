@@ -27,7 +27,7 @@ type VentaPeriodo = {
       })
     | null;
 };
-type GastoPeriodo = { monto: Prisma.Decimal };
+type GastoPeriodo = { monto: Prisma.Decimal; categoria: string };
 
 // Totales de un conjunto de ventas y gastos (operativos) de un periodo.
 // Gastos = gastos operativos + lo que costo enviar esas ventas
@@ -59,11 +59,17 @@ function totales(ventas: VentaPeriodo[], gastos: GastoPeriodo[]) {
   }
   const neto = totalVentas.minus(totalGastos);
 
+  // Ya esta dentro de totalGastos; aparte para el margen por unidad.
+  const totalPublicidad = gastos
+    .filter((g) => g.categoria === "PUBLICIDAD")
+    .reduce((s, g) => s.plus(g.monto), new Prisma.Decimal(0));
+
   return {
     totalVentas,
     totalGastos,
     totalEnvios,
     totalComisiones,
+    totalPublicidad,
     disponible: neto.minus(aLiberar),
     aLiberar,
     neto,
@@ -197,16 +203,18 @@ export async function getResumenInversion() {
  * Margen promedio por unidad de un periodo (mes o año), con lo que cuesta
  * cada venta ademas de producirla: precio promedio cobrado por unidad (todas
  * las ventas: minorista, mayorista, distribuidor y concesion) menos el costo
- * unitario promedio historico de produccion, el envio y lo que se lleva
- * Mercado Pago (comision y cuotas), repartidos por unidad. Los gastos
- * operativos no entran: no dependen de cuantas unidades se venden (estan en
- * el resultado neto).
+ * unitario promedio historico de produccion, el envio, lo que se lleva
+ * Mercado Pago (comision y cuotas) y la publicidad paga del periodo
+ * (gastos PUBLICIDAD), repartidos entre todas las unidades vendidas. El
+ * resto de los gastos operativos no entra: no depende de cuantas unidades
+ * se venden (esta en el resultado neto).
  */
 export function margenReal(
   resumen: {
     totalVentas: Prisma.Decimal;
     totalEnvios: Prisma.Decimal;
     totalComisiones: Prisma.Decimal;
+    totalPublicidad: Prisma.Decimal;
     unidadesVendidas: number;
   },
   costoUnitarioPromedio: Prisma.Decimal | null,
@@ -216,12 +224,18 @@ export function margenReal(
   const precio = resumen.totalVentas.div(u);
   const envio = resumen.totalEnvios.div(u);
   const mercadoPago = resumen.totalComisiones.div(u);
-  const margen = precio.minus(costoUnitarioPromedio).minus(envio).minus(mercadoPago);
+  const publicidad = resumen.totalPublicidad.div(u);
+  const margen = precio
+    .minus(costoUnitarioPromedio)
+    .minus(envio)
+    .minus(mercadoPago)
+    .minus(publicidad);
   return {
     precio,
     produccion: costoUnitarioPromedio,
     envio,
     mercadoPago,
+    publicidad,
     margen,
     // Sobre el precio promedio: que parte de cada venta le queda a Peliando.
     porcentaje: precio.gt(0) ? margen.div(precio).times(100) : null,

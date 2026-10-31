@@ -13,7 +13,7 @@ import { enviarNotificacion } from "@/lib/services/notificaciones";
 
 const gastoSchema = z.object({
   tipo: z.enum(["OPERATIVO", "INVERSION"]),
-  categoria: z.enum(["TRANSPORTE", "COMIDA", "MARKETING_PRODUCCION", "OTROS"]),
+  categoria: z.enum(["TRANSPORTE", "COMIDA", "MARKETING_PRODUCCION", "PUBLICIDAD", "OTROS"]),
   concepto: z.string().trim().min(1, "El concepto es obligatorio"),
   monto: z.coerce.number().positive("El monto debe ser mayor a 0"),
   fecha: z.string().min(1),

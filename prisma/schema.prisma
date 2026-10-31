@@ -49,10 +49,13 @@ enum FormaPago {
   TRANSFERENCIA
 }
 
+// PUBLICIDAD es la pauta paga (Meta): ademas de sumar a los gastos, se
+// descuenta del margen por unidad en Reportes (ver margenReal).
 enum CategoriaGasto {
   TRANSPORTE
   COMIDA
   MARKETING_PRODUCCION
+  PUBLICIDAD
   OTROS
 }
 

@@ -160,8 +160,8 @@ export default async function ReportesPage({
           value={margen ? `${formatMoney(margen.margen)} c/u` : "—"}
           hint={
             margen?.porcentaje
-              ? `${margen.porcentaje.toFixed(0)}% del precio, ya con envío y Mercado Pago`
-              : "precio − producción, envío y Mercado Pago"
+              ? `${margen.porcentaje.toFixed(0)}% del precio, ya con envío, Mercado Pago y publicidad`
+              : "precio − producción, envío, Mercado Pago y publicidad"
           }
           stripe="amarillo"
           hintColor={margen?.margen.lt(0) ? "rosa" : undefined}
@@ -190,6 +190,7 @@ export default async function ReportesPage({
               <FilaMargen label="Costo de producción" valor={`− ${formatMoney(margen.produccion)}`} />
               <FilaMargen label="Envío" valor={`− ${formatMoney(margen.envio)}`} />
               <FilaMargen label="Mercado Pago (comisión y cuotas)" valor={`− ${formatMoney(margen.mercadoPago)}`} />
+              <FilaMargen label="Publicidad (Meta)" valor={`− ${formatMoney(margen.publicidad)}`} />
               <div className="flex justify-between gap-3 border-t-2 border-navy/30 pt-2 mt-1 font-black">
                 <dt>Margen por unidad</dt>
                 <dd className={`whitespace-nowrap ${margen.margen.lt(0) ? "text-rosa" : ""}`}>
@@ -200,8 +201,9 @@ export default async function ReportesPage({
                 </dd>
               </div>
               <p className="text-xs text-navy/55 mt-1">
-                Promedio de las {resumen.unidadesVendidas} unidades del período. Los gastos operativos
-                no entran: están en el resultado neto.
+                Promedio de las {resumen.unidadesVendidas} unidades del período. La publicidad se
+                reparte entre todas; el resto de los gastos operativos no entra: está en el resultado
+                neto.
               </p>
             </dl>
           ) : (

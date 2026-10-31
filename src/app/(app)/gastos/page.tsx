@@ -12,6 +12,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   TRANSPORTE: "Transporte",
   COMIDA: "Comida",
   MARKETING_PRODUCCION: "Marketing / Producción",
+  PUBLICIDAD: "Publicidad (Meta)",
   OTROS: "Otros",
 };
 
