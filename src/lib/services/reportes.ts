@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma, type FormaPago } from "@prisma/client";
+import { Prisma, type FormaPago, type OrigenVenta, type TipoVenta } from "@prisma/client";
 import {
   startOfMonth,
   endOfMonth,
@@ -17,6 +17,8 @@ type VentaPeriodo = {
   precioTotal: Prisma.Decimal;
   costoEnvio: Prisma.Decimal;
   cantidad: number;
+  tipo: TipoVenta;
+  origen: OrigenVenta;
   formaPago: FormaPago | null;
   pagoMercadoPago:
     | (NonNullable<Parameters<typeof costoCobro>[0]> & {
@@ -250,6 +252,10 @@ export const MEDIOS_REPORTE = [
   "Transferencia",
   "Efectivo",
   "Posnet",
+  // Sin forma de pago cargada, separadas por de donde vienen.
+  "Mayoristas y distribuidores (sin especificar)",
+  "Ventas rápidas (sin especificar)",
+  // Ventas de Tiendup cuyo cobro todavia no trajo el cron.
   "Sin especificar",
 ] as const;
 export type MedioReporte = (typeof MEDIOS_REPORTE)[number];
@@ -262,29 +268,44 @@ const MEDIO_DE_FORMA_PAGO: Record<FormaPago, MedioReporte> = {
 
 // Medio de una venta: el del cobro de Mercado Pago si lo tiene (ventas de
 // Tiendup), si no la forma de pago cargada (o la transferencia de Tiendup).
-function medioDeVenta(v: Pick<VentaPeriodo, "formaPago" | "pagoMercadoPago">): MedioReporte {
+function medioDeVenta(
+  v: Pick<VentaPeriodo, "formaPago" | "pagoMercadoPago" | "tipo" | "origen">,
+): MedioReporte {
   const p = v.pagoMercadoPago;
   if (p) {
     if (p.tipoMedio === "account_money") return "Dinero en cuenta";
     if (p.tipoMedio === "credit_card" && p.cuotas > 1) return "Tarjeta en cuotas";
     return "Tarjeta en 1 pago";
   }
-  return v.formaPago ? MEDIO_DE_FORMA_PAGO[v.formaPago] : "Sin especificar";
+  if (v.formaPago) return MEDIO_DE_FORMA_PAGO[v.formaPago];
+  if (v.origen === "WEBHOOK_TIENDUP") return "Sin especificar";
+  return v.tipo === "MINORISTA"
+    ? "Ventas rápidas (sin especificar)"
+    : "Mayoristas y distribuidores (sin especificar)";
 }
 
-/** Cuantas ventas y cuanta plata (precio de venta) entraron por cada medio. */
-function distribucionMedios(ventas: Pick<VentaPeriodo, "formaPago" | "pagoMercadoPago" | "precioTotal">[]) {
-  const porMedio = new Map<MedioReporte, { ventas: number; monto: Prisma.Decimal }>();
+/**
+ * Cuantas ventas, unidades y cuanta plata (precio de venta) entraron por
+ * cada medio. Ventas y unidades difieren: una venta mayorista lleva varias
+ * (la tarjeta "Unidades vendidas" cuenta unidades).
+ */
+function distribucionMedios(
+  ventas: Pick<
+    VentaPeriodo,
+    "formaPago" | "pagoMercadoPago" | "precioTotal" | "cantidad" | "tipo" | "origen"
+  >[],
+) {
+  const porMedio = new Map<MedioReporte, { ventas: number; unidades: number; monto: Prisma.Decimal }>();
   for (const v of ventas) {
     const medio = medioDeVenta(v);
-    const actual = porMedio.get(medio) ?? { ventas: 0, monto: new Prisma.Decimal(0) };
+    const actual = porMedio.get(medio) ?? { ventas: 0, unidades: 0, monto: new Prisma.Decimal(0) };
     actual.ventas++;
+    actual.unidades += v.cantidad;
     actual.monto = actual.monto.plus(v.precioTotal);
     porMedio.set(medio, actual);
   }
-  return MEDIOS_REPORTE.filter((m) => porMedio.has(m)).map((medio) => ({
-    medio,
-    ventas: porMedio.get(medio)!.ventas,
-    monto: porMedio.get(medio)!.monto.toNumber(),
-  }));
+  return MEDIOS_REPORTE.filter((m) => porMedio.has(m)).map((medio) => {
+    const d = porMedio.get(medio)!;
+    return { medio, ventas: d.ventas, unidades: d.unidades, monto: d.monto.toNumber() };
+  });
 }
