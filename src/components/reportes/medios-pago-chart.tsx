@@ -83,8 +83,8 @@ export function MediosPagoChart({ data }: { data: Fila[] }) {
           <tr className="text-left text-xs uppercase text-navy/60">
             <th className="font-extrabold pb-2">Medio</th>
             <th className="font-extrabold pb-2 px-3 text-center">Unidades</th>
-            <th className="font-extrabold pb-2 text-right">Dinero</th>
-            <th className="font-extrabold pb-2 pl-5 text-right">%</th>
+            <th className="font-extrabold pb-2 px-3 text-center">Dinero</th>
+            <th className="font-extrabold pb-2 px-3 text-center">%</th>
           </tr>
         </thead>
         <tbody>
@@ -101,8 +101,8 @@ export function MediosPagoChart({ data }: { data: Fila[] }) {
                 </span>
               </td>
               <td className="py-2 px-3 text-center">{d.unidades}</td>
-              <td className="py-2 text-right whitespace-nowrap">{formatMoney(d.monto)}</td>
-              <td className="py-2 pl-5 text-right text-navy/60">{pct(d.monto).toFixed(0)}%</td>
+              <td className="py-2 px-3 text-center whitespace-nowrap">{formatMoney(d.monto)}</td>
+              <td className="py-2 px-3 text-center text-navy/60">{pct(d.monto).toFixed(0)}%</td>
             </tr>
           ))}
         </tbody>
