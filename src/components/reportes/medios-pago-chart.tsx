@@ -19,17 +19,16 @@ const COLOR: Record<MedioReporte, string> = {
   "Sin especificar": "#cfc8bd",
 };
 
-type Fila = { medio: MedioReporte; ventas: number; unidades: number; monto: number };
+type Fila = { medio: MedioReporte; unidades: number; monto: number };
 
 /**
  * Como se cobraron las ventas del periodo. La torta reparte el dinero; la
- * lista al lado da cantidad de ventas, dinero y porcentaje de cada medio
+ * lista al lado da unidades, dinero y porcentaje de cada medio
  * (los colores claros no alcanzan contraste sobre la tarjeta: el nombre
  * siempre va escrito).
  */
 export function MediosPagoChart({ data }: { data: Fila[] }) {
   const totalMonto = data.reduce((s, d) => s + d.monto, 0);
-  const totalVentas = data.reduce((s, d) => s + d.ventas, 0);
   const totalUnidades = data.reduce((s, d) => s + d.unidades, 0);
   const pct = (monto: number) => (totalMonto > 0 ? (monto / totalMonto) * 100 : 0);
 
@@ -65,7 +64,7 @@ export function MediosPagoChart({ data }: { data: Fila[] }) {
               formatter={(value, _name, item) => {
                 const fila = item.payload as Fila;
                 return [
-                  `${formatMoney(Number(value))} · ${fila.ventas} venta${fila.ventas === 1 ? "" : "s"} (${fila.unidades} un.) · ${pct(fila.monto).toFixed(0)}%`,
+                  `${formatMoney(Number(value))} · ${fila.unidades} un. · ${pct(fila.monto).toFixed(0)}%`,
                   fila.medio,
                 ];
               }}
@@ -75,9 +74,7 @@ export function MediosPagoChart({ data }: { data: Fila[] }) {
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-[11px] font-extrabold uppercase text-navy/55">Total</span>
           <span className="text-lg font-black">{formatMoney(totalMonto)}</span>
-          <span className="text-xs text-navy/60">
-            {totalVentas} venta{totalVentas === 1 ? "" : "s"} · {totalUnidades} un.
-          </span>
+          <span className="text-xs text-navy/60">{totalUnidades} un.</span>
         </div>
       </div>
 
@@ -85,7 +82,6 @@ export function MediosPagoChart({ data }: { data: Fila[] }) {
         <thead>
           <tr className="text-left text-xs uppercase text-navy/60">
             <th className="font-extrabold pb-2">Medio</th>
-            <th className="font-extrabold pb-2 text-right">Ventas</th>
             <th className="font-extrabold pb-2 text-right">Unidades</th>
             <th className="font-extrabold pb-2 text-right">Dinero</th>
             <th className="font-extrabold pb-2 text-right">%</th>
@@ -104,7 +100,6 @@ export function MediosPagoChart({ data }: { data: Fila[] }) {
                   {d.medio}
                 </span>
               </td>
-              <td className="py-2 text-right">{d.ventas}</td>
               <td className="py-2 text-right">{d.unidades}</td>
               <td className="py-2 text-right whitespace-nowrap">{formatMoney(d.monto)}</td>
               <td className="py-2 text-right text-navy/60">{pct(d.monto).toFixed(0)}%</td>

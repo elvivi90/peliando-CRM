@@ -285,9 +285,9 @@ function medioDeVenta(
 }
 
 /**
- * Cuantas ventas, unidades y cuanta plata (precio de venta) entraron por
- * cada medio. Ventas y unidades difieren: una venta mayorista lleva varias
- * (la tarjeta "Unidades vendidas" cuenta unidades).
+ * Cuantas unidades y cuanta plata (precio de venta) entraron por cada medio.
+ * Unidades y no ventas, como la tarjeta "Unidades vendidas": una venta
+ * mayorista lleva varias.
  */
 function distribucionMedios(
   ventas: Pick<
@@ -295,17 +295,16 @@ function distribucionMedios(
     "formaPago" | "pagoMercadoPago" | "precioTotal" | "cantidad" | "tipo" | "origen"
   >[],
 ) {
-  const porMedio = new Map<MedioReporte, { ventas: number; unidades: number; monto: Prisma.Decimal }>();
+  const porMedio = new Map<MedioReporte, { unidades: number; monto: Prisma.Decimal }>();
   for (const v of ventas) {
     const medio = medioDeVenta(v);
-    const actual = porMedio.get(medio) ?? { ventas: 0, unidades: 0, monto: new Prisma.Decimal(0) };
-    actual.ventas++;
+    const actual = porMedio.get(medio) ?? { unidades: 0, monto: new Prisma.Decimal(0) };
     actual.unidades += v.cantidad;
     actual.monto = actual.monto.plus(v.precioTotal);
     porMedio.set(medio, actual);
   }
   return MEDIOS_REPORTE.filter((m) => porMedio.has(m)).map((medio) => {
     const d = porMedio.get(medio)!;
-    return { medio, ventas: d.ventas, unidades: d.unidades, monto: d.monto.toNumber() };
+    return { medio, unidades: d.unidades, monto: d.monto.toNumber() };
   });
 }
