@@ -48,13 +48,14 @@ const ENVIO_ESTILO: Record<string, { color: string; label: string }> = {
   ERROR_CREACION: { color: "bg-red-600/15 text-red-700", label: "Error" },
 };
 
-export function EnvioBadge({ estado }: { estado: string }) {
+// `detalle` va despues del estado, ej. la sucursal: "A retirar: NOIR".
+export function EnvioBadge({ estado, detalle }: { estado: string; detalle?: string | null }) {
   const estilo = ENVIO_ESTILO[estado] ?? { color: "bg-navy/10 text-navy", label: estado };
   return (
     <span
       className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold whitespace-nowrap ${estilo.color}`}
     >
-      {estilo.label}
+      {detalle ? `${estilo.label}: ${detalle}` : estilo.label}
     </span>
   );
 }

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EnvioBadge, TipoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
-import { ponerAlDiaEnviosConTiendup } from "@/lib/services/envios";
+import { ponerAlDiaConTiendup } from "@/lib/services/envios";
 import type { TipoVenta } from "@prisma/client";
 
 const TIPOS: { value: TipoVenta | ""; label: string }[] = [
@@ -60,8 +60,9 @@ export default async function VentasPage({
       envio: { select: { id: true, estado: true, trackingNumber: true } },
     },
   });
-  // Lo que el equipo ya despacho en Tiendup se ve aca sin esperar al cron.
-  await ponerAlDiaEnviosConTiendup(ventas);
+  // Lo que el equipo ya despacho o entrego en Tiendup se ve aca sin esperar
+  // al cron. Tambien trae la sucursal de los retiros pendientes.
+  const sucursales = await ponerAlDiaConTiendup(ventas);
 
   return (
     <div>
@@ -164,7 +165,7 @@ export default async function VentasPage({
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      <EnvioBadge estado={estadoEntrega(v)} />
+                      <EnvioBadge estado={estadoEntrega(v)} detalle={sucursales.get(v.id)} />
                     </td>
                     <td className="px-5 py-3 text-navy/60 hidden md:table-cell">
                       {v.evento?.nombre ?? "—"}

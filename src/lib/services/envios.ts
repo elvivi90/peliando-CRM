@@ -8,7 +8,7 @@ import {
   importarEnvio,
   type Tracking,
 } from "@/lib/services/correo-argentino";
-import { fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
+import { envioCompletado, fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 import { codigoProvincia } from "@/lib/provincias";
 import { esEntregaEnLaPlata } from "@/lib/validation/venta";
 
@@ -256,43 +256,75 @@ export function cambiosEnvioSegunTiendup(
 }
 
 /**
- * Para el listado de ventas: pone al dia (en la base y en los objetos que se
- * pasan) los envios de ventas de Tiendup que siguen POR_ENVIAR o sin numero
- * de seguimiento, sin esperar al cron diario. Como mucho `maximo` consultas
- * a Tiendup por llamada (golpearla seguido devuelve 403 por un rato); si
- * Tiendup no responde, ese envio queda como estaba.
+ * Para el listado de ventas: pone al dia con Tiendup, sin esperar al cron
+ * diario, las ventas de Tiendup que siguen pendientes:
+ * - con envio por Correo "Por enviar" o sin seguimiento: les copia el
+ *   despacho y el seguimiento (cambiosEnvioSegunTiendup);
+ * - sin envio por Correo (retiro en sucursal o entrega del equipo) y sin
+ *   entregar: si Tiendup ya la marco enviada o retirada registra la entrega,
+ *   como el cron entregas-tiendup; si no, devuelve la sucursal de retiro.
+ * Actualiza la base y los objetos que se pasan. Devuelve la sucursal de
+ * retiro de cada venta que sigue sin retirar (por id). Como mucho `maximo`
+ * consultas a Tiendup por llamada (golpearla seguido devuelve 403 por un
+ * rato); si Tiendup no responde, esa venta queda como estaba.
  */
-export async function ponerAlDiaEnviosConTiendup(
+export async function ponerAlDiaConTiendup(
   ventas: {
+    id: string;
     tiendupOrderId: number | null;
+    cantidad: number;
+    cantidadEntregada: number;
     envio: Pick<Envio, "id" | "estado" | "trackingNumber"> | null;
   }[],
   maximo = 10,
 ) {
+  const sucursales = new Map<string, string>();
   const pendientes = ventas
-    .filter(
-      (v) =>
-        v.tiendupOrderId !== null &&
-        v.envio &&
-        (v.envio.estado === "POR_ENVIAR" ||
-          (v.envio.estado === "ENVIADO" && !v.envio.trackingNumber)),
-    )
+    .filter((v) => {
+      if (v.tiendupOrderId === null) return false;
+      if (!v.envio) return v.cantidadEntregada < v.cantidad;
+      return (
+        v.envio.estado === "POR_ENVIAR" ||
+        (v.envio.estado === "ENVIADO" && !v.envio.trackingNumber)
+      );
+    })
     .slice(0, maximo);
 
   await Promise.all(
     pendientes.map(async (v) => {
-      const envio = v.envio!;
       try {
         const orden = await fetchTiendupOrder(v.tiendupOrderId!, { timeoutMs: 4000 });
-        const cambios = cambiosEnvioSegunTiendup(envio, orden);
-        if (!cambios) return;
-        await prisma.envio.update({ where: { id: envio.id }, data: cambios });
-        Object.assign(envio, cambios);
+
+        if (v.envio) {
+          const cambios = cambiosEnvioSegunTiendup(v.envio, orden);
+          if (!cambios) return;
+          await prisma.envio.update({ where: { id: v.envio.id }, data: cambios });
+          Object.assign(v.envio, cambios);
+          return;
+        }
+
+        if (envioCompletado(orden)) {
+          await prisma.$transaction([
+            prisma.entrega.create({
+              data: { ventaId: v.id, cantidad: v.cantidad - v.cantidadEntregada },
+            }),
+            prisma.venta.update({
+              where: { id: v.id },
+              data: { cantidadEntregada: v.cantidad },
+            }),
+          ]);
+          v.cantidadEntregada = v.cantidad;
+          return;
+        }
+
+        const sucursal = orden.shipping?.branch?.name?.trim();
+        if (sucursal) sucursales.set(v.id, sucursal);
       } catch (err) {
-        console.error(`[tiendup] poner al dia el envio de la orden #${v.tiendupOrderId}:`, err);
+        console.error(`[tiendup] poner al dia la venta de la orden #${v.tiendupOrderId}:`, err);
       }
     }),
   );
+  return sucursales;
 }
 
 export async function sincronizarEnvioConTiendup(

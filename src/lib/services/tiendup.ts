@@ -68,6 +68,8 @@ export type TiendupOrder = {
     // Metodo o sucursal: "Correo Argentino Estándar", "La plata"
     name?: string | null;
     tracking_code?: string | null;
+    // Solo en retiro en sucursal: "Sucursal la plata centro", "NOIR".
+    branch?: { name?: string | null } | null;
     recipient_name?: string | null;
     recipient_phone?: string | null;
     cost_customer?: string | null;
