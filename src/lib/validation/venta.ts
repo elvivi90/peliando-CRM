@@ -7,6 +7,64 @@ const opcional = z
   .transform((v) => (v && v.trim() !== "" ? v.trim() : null));
 const requerido = (mensaje: string) => z.string().trim().min(1, mensaje);
 
+const sinAcentos = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// Localidades del partido de La Plata (sin acentos, en minuscula). Tienen
+// que coincidir con la localidad completa. Las que se repiten en otro lado
+// (San Carlos, Abasto, Hernandez) no estan: se reconocen por el codigo postal.
+const LOCALIDADES_LA_PLATA = new Set([
+  "tolosa",
+  "ringuelet",
+  "gonnet",
+  "manuel b. gonnet",
+  "manuel b gonnet",
+  "city bell",
+  "villa elisa",
+  "gorina",
+  "joaquin gorina",
+  "arturo segui",
+  "los hornos",
+  "villa elvira",
+  "altos de san lorenzo",
+  "melchor romero",
+  "lisandro olmos",
+  "etcheverry",
+  "angel etcheverry",
+  "el peligro",
+  "villa garibaldi",
+  "transradio",
+  "ignacio correas",
+]);
+// 1894 Villa Elisa, 1895 Arturo Segui, 1896 City Bell / Gorina, 1897
+// Gonnet, 1900-1903 La Plata, Tolosa, Ringuelet, Los Hornos, Olmos, Romero
+// y Abasto.
+const CP_LA_PLATA = new Set(["1894", "1895", "1896", "1897", "1900", "1901", "1902", "1903"]);
+
+/**
+ * Las entregas en el partido de La Plata las hace el equipo (envio propio
+ * o retiro): no van por Correo Argentino ni generan etiqueta. Se reconoce
+ * por la localidad, el codigo postal (con o sin la letra de provincia) o el
+ * nombre del metodo de envio de Tiendup ("Envío en La Plata").
+ */
+export function esEntregaEnLaPlata(d: {
+  localidad?: string | null;
+  codigoPostal?: string | null;
+  metodo?: string | null;
+}) {
+  const cp = d.codigoPostal?.match(/\d{4}/)?.[0];
+  const localidad = sinAcentos(d.localidad ?? "").replace(/\s+/g, " ").trim();
+  return (
+    (cp !== undefined && CP_LA_PLATA.has(cp)) ||
+    /\bla plata\b/.test(localidad) ||
+    LOCALIDADES_LA_PLATA.has(localidad) ||
+    /\bla plata\b/.test(sinAcentos(d.metodo ?? ""))
+  );
+}
+
+export const MENSAJE_ENVIO_LA_PLATA =
+  "Las entregas en La Plata no van por Correo Argentino: cargá la venta sin envío.";
+
 // Destinatario y direccion de un envio por Correo Argentino (ver modelo Envio).
 export const envioSchema = z.object({
   destinatarioNombre: requerido("Falta el nombre del destinatario"),

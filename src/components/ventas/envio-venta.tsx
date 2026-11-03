@@ -1,3 +1,7 @@
+import { after } from "next/server";
+import type { EstadoEnvio } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { cambiosEnvioSegunTiendup } from "@/lib/services/envios";
 import { EnvioBadge } from "@/components/ui/badge";
 import { EnvioPanel, type EnvioDetalle } from "@/components/ventas/envio-panel";
 import { ordenTiendupDeVenta } from "@/components/ventas/orden-tiendup";
@@ -37,9 +41,27 @@ export async function EnvioVenta({
   const nota = orden?.note?.trim() || orden?.shipping?.observations?.trim() || null;
 
   if (envio) {
+    // Lo que el equipo marco en Tiendup (despachado, seguimiento) y el Envio
+    // todavia no tiene: se muestra ya y se guarda despues de responder, para
+    // que el listado de ventas tambien lo vea sin esperar al cron diario.
+    const cambios =
+      orden && envio.estado !== "ERROR_CREACION"
+        ? cambiosEnvioSegunTiendup(
+            { estado: envio.estado as EstadoEnvio, trackingNumber: envio.trackingNumber },
+            orden,
+          )
+        : null;
+    if (cambios) {
+      after(() =>
+        prisma.envio.update({ where: { id: envio.id }, data: cambios }).catch((err) => {
+          console.error(`[tiendup] actualizar envio ${envio.numero} desde la orden:`, err);
+        }),
+      );
+    }
+
     return (
       <EnvioPanel
-        envio={envio}
+        envio={{ ...envio, ...cambios }}
         trackingTiendup={orden?.shipping?.tracking_code}
         nombreCliente={nombreCliente}
         nota={nota}

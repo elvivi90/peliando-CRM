@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/correo-argentino";
 import { fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 import { codigoProvincia } from "@/lib/provincias";
+import { esEntregaEnLaPlata } from "@/lib/validation/venta";
 
 /**
  * Ciclo de un Envio (ver modelo en schema.prisma): se crea la fila junto con
@@ -62,7 +63,8 @@ export type DatosEnvio = Pick<
 
 /**
  * Destinatario y direccion de una orden de Tiendup con envio a domicilio.
- * Null si la orden no lleva envio (retiro en sucursal o sin envio). Lo que
+ * Null si la orden no lleva envio (retiro en sucursal o sin envio) o si es
+ * en La Plata, que la entrega el equipo (ver esEntregaEnLaPlata). Lo que
  * falte queda vacio y crearEnvioEnCorreo lo informa como error, para
  * completarlo a mano desde el detalle de la venta.
  */
@@ -70,6 +72,10 @@ export function datosEnvioTiendup(order: TiendupOrder): DatosEnvio | null {
   const envio = order.shipping;
   if (envio?.type !== "ship") return null;
   const a = envio.address ?? {};
+  // Las de La Plata las entrega el equipo: sin etiqueta de Correo.
+  if (esEntregaEnLaPlata({ localidad: a.city, codigoPostal: a.zip_code, metodo: envio.name })) {
+    return null;
+  }
   const nombreCliente = [order.customer.name, order.customer.last_name].filter(Boolean).join(" ");
   return {
     // Tiendup a veces trae espacios de mas ("Gabriela  Pons").
@@ -223,4 +229,38 @@ export async function actualizarSeguimiento(envio: Envio) {
     }
     return true;
   });
+}
+
+/**
+ * Lleva al Envio lo que el equipo marca en Tiendup: el numero de seguimiento
+ * (MiCorreo no lo devuelve al importar) y el despacho (POR_ENVIAR pasa a
+ * ENVIADO). Sin esto el envio quedaba "Por enviar" para siempre: el
+ * seguimiento de MiCorreo no encuentra los envios importados por API si no
+ * tiene el numero. Con el numero guardado, el cron envios-correo puede
+ * seguirlo hasta ENTREGADO. Devuelve los cambios aplicados (null si no hubo).
+ */
+export function cambiosEnvioSegunTiendup(
+  envio: Pick<Envio, "estado" | "trackingNumber">,
+  orden: Pick<TiendupOrder, "status" | "shipping">,
+) {
+  const cambios: { estado?: EstadoEnvio; trackingNumber?: string } = {};
+
+  // A veces viene con prefijo "TN " o con espacios.
+  const tracking = orden.shipping?.tracking_code?.replace(/^TN\s*/i, "").replace(/\s+/g, "") || null;
+  if (tracking && !envio.trackingNumber) cambios.trackingNumber = tracking;
+
+  const despachado = orden.shipping?.status === "shipped" || orden.status === "closed";
+  if (despachado && envio.estado === "POR_ENVIAR") cambios.estado = "ENVIADO";
+
+  return Object.keys(cambios).length > 0 ? cambios : null;
+}
+
+export async function sincronizarEnvioConTiendup(
+  envio: Pick<Envio, "id" | "estado" | "trackingNumber">,
+  orden: Pick<TiendupOrder, "status" | "shipping">,
+) {
+  const cambios = cambiosEnvioSegunTiendup(envio, orden);
+  if (!cambios) return false;
+  await prisma.envio.update({ where: { id: envio.id }, data: cambios });
+  return true;
 }

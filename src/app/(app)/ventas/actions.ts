@@ -9,7 +9,14 @@ import { sugerirPrecio, elegirTramo, precioDeTramo, PricingError } from "@/lib/p
 import { parseFechaInput } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
-import { envioSchema, ventaSchema, type EnvioInput, type VentaInput } from "@/lib/validation/venta";
+import {
+  MENSAJE_ENVIO_LA_PLATA,
+  envioSchema,
+  esEntregaEnLaPlata,
+  ventaSchema,
+  type EnvioInput,
+  type VentaInput,
+} from "@/lib/validation/venta";
 import { saldoConcesion } from "@/lib/services/concesion";
 import { correoConfigurado } from "@/lib/services/correo-argentino";
 import { crearEnvioEnCorreo } from "@/lib/services/envios";
@@ -76,6 +83,7 @@ export async function crearVenta(input: VentaInput) {
   if (data.envio && !correoConfigurado()) {
     throw new Error("Los envíos por Correo Argentino no están configurados todavía.");
   }
+  if (data.envio && esEntregaEnLaPlata(data.envio)) throw new Error(MENSAJE_ENVIO_LA_PLATA);
   // Con envio la venta queda pendiente de entrega hasta que Correo la
   // entregue (ver actualizarSeguimiento).
   const cantidadEntregada = data.envio ? 0 : data.cantidadEntregada;
@@ -452,6 +460,7 @@ export async function reintentarEnvio(envioId: string, input: EnvioInput) {
   if (envio.estado !== "ERROR_CREACION") {
     throw new Error("Este envío ya está dado de alta en Correo Argentino.");
   }
+  if (esEntregaEnLaPlata(datos)) throw new Error(MENSAJE_ENVIO_LA_PLATA);
 
   await prisma.envio.update({ where: { id: envioId }, data: datos });
   const resultado = await crearEnvioEnCorreo(envioId);

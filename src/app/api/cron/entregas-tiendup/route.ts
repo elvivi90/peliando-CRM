@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { nombreCliente } from "@/lib/format";
 import { envioCompletado, fetchTiendupOrder } from "@/lib/services/tiendup";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
+import { sincronizarEnvioConTiendup } from "@/lib/services/envios";
 
 // Un pedido pago que lleva mas que esto sin entregarse dispara el aviso.
 const DIAS_PARA_AVISAR = 3;
@@ -19,6 +20,11 @@ const DIAS_PARA_AVISAR = 3;
  *
  * La entrega queda con la fecha del chequeo: Tiendup no informa cuando se
  * despacho, asi que puede quedar hasta un dia despues de la real.
+ *
+ * Tambien revisa las ventas con Envio por Correo todavia "Por enviar" o sin
+ * numero de seguimiento (aunque la venta ya figure entregada): les copia el
+ * despacho y el seguimiento de Tiendup (ver sincronizarEnvioConTiendup).
+ * Corre antes que envios-correo, que despues sigue esos numeros.
  */
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -26,23 +32,40 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  const pendientes = await prisma.venta.findMany({
+  const aRevisar = await prisma.venta.findMany({
     where: {
       origen: "WEBHOOK_TIENDUP",
       tiendupOrderId: { not: null },
-      cantidadEntregada: { lt: prisma.venta.fields.cantidad },
+      OR: [
+        { cantidadEntregada: { lt: prisma.venta.fields.cantidad } },
+        {
+          envio: {
+            OR: [{ estado: "POR_ENVIAR" }, { estado: "ENVIADO", trackingNumber: null }],
+          },
+        },
+      ],
     },
-    include: { cliente: true },
+    include: { cliente: true, envio: true },
     orderBy: { fecha: "asc" },
   });
+  const pendientes = aRevisar.filter((v) => v.cantidadEntregada < v.cantidad);
 
   const entregadas = new Set<string>();
   const errores: number[] = [];
+  let enviosActualizados = 0;
 
-  for (const venta of pendientes) {
+  for (const venta of aRevisar) {
     try {
       const orden = await fetchTiendupOrder(venta.tiendupOrderId!, { timeoutMs: 10000 });
-      if (!envioCompletado(orden)) continue;
+
+      if (venta.envio && venta.envio.estado !== "ERROR_CREACION") {
+        if (await sincronizarEnvioConTiendup(venta.envio, orden)) {
+          enviosActualizados++;
+          revalidatePath(`/ventas/${venta.id}`);
+        }
+      }
+
+      if (venta.cantidadEntregada >= venta.cantidad || !envioCompletado(orden)) continue;
 
       await prisma.$transaction([
         prisma.entrega.create({
@@ -62,7 +85,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (entregadas.size > 0) {
+  if (entregadas.size > 0 || enviosActualizados > 0) {
     revalidatePath("/ventas");
     revalidatePath("/dashboard");
   }
@@ -90,9 +113,12 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    revisadas: pendientes.length,
+    revisadas: aRevisar.length,
     entregadas: entregadas.size,
-    siguenPendientes: pendientes.length - entregadas.size - errores.length,
+    enviosActualizados,
+    siguenPendientes: pendientes.filter(
+      (v) => !entregadas.has(v.id) && !errores.includes(v.tiendupOrderId!),
+    ).length,
     atrasadas: atrasadas.length,
     errores,
   });
