@@ -18,6 +18,26 @@ const TIPOS: { value: TipoVenta | ""; label: string }[] = [
 const FILTRO_ACTIVO = "px-3.5 py-2 rounded-xl bg-tarjeta border-2 border-navy text-xs font-extrabold";
 const FILTRO_INACTIVO = "px-3.5 py-2 rounded-xl text-xs font-bold opacity-55 hover:opacity-100";
 
+/**
+ * Lo que muestra la columna Envío: el estado del envio por Correo si lo
+ * hay; si no, si la venta ya se entrego o como falta entregarla. Una venta
+ * de Tiendup sin localidad de envio es un retiro en sucursal (las que no
+ * llevan envio se crean entregadas); con localidad y sin envio de Correo es
+ * una entrega del equipo (La Plata).
+ */
+function estadoEntrega(v: {
+  envio: { estado: string } | null;
+  cantidad: number;
+  cantidadEntregada: number;
+  origen: string;
+  envioLocalidad: string | null;
+}) {
+  if (v.envio) return v.envio.estado;
+  if (v.cantidadEntregada >= v.cantidad) return "ENTREGADO";
+  if (v.origen === "WEBHOOK_TIENDUP") return v.envioLocalidad ? "POR_ENVIAR" : "A_RETIRAR";
+  return "POR_ENTREGAR";
+}
+
 export default async function VentasPage({
   searchParams,
 }: {
@@ -134,15 +154,6 @@ export default async function VentasPage({
                     </td>
                     <td className="px-5 py-3">
                       {v.cantidad}
-                      {/* Con envio, la columna Envío ya muestra si falta entregar. */}
-                      {v.cantidadEntregada < v.cantidad && !v.envio && (
-                        <span
-                          className="text-rosa text-xs font-bold ml-1"
-                          title="Entrega pendiente"
-                        >
-                          ⏳
-                        </span>
-                      )}
                     </td>
                     <td className="px-5 py-3 font-bold whitespace-nowrap">
                       {formatMoney(v.precioTotal)}
@@ -153,7 +164,7 @@ export default async function VentasPage({
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      {v.envio ? <EnvioBadge estado={v.envio.estado} /> : <span className="text-navy/40">—</span>}
+                      <EnvioBadge estado={estadoEntrega(v)} />
                     </td>
                     <td className="px-5 py-3 text-navy/60 hidden md:table-cell">
                       {v.evento?.nombre ?? "—"}

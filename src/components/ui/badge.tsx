@@ -36,9 +36,13 @@ export function EstadoBadge({ estado }: { estado: string }) {
 }
 
 // Estado de un envio: amarillo mientras no se despacho, verde enviado o
-// entregado, rojo si fallo el alta en Correo.
+// entregado, rojo si fallo el alta en Correo. A_RETIRAR y POR_ENTREGAR no
+// son de Correo: son ventas sin envio todavia sin entregar (retiro en
+// sucursal de Tiendup, o venta manual).
 const ENVIO_ESTILO: Record<string, { color: string; label: string }> = {
   POR_ENVIAR: { color: "bg-amarillo text-navy", label: "Por enviar" },
+  A_RETIRAR: { color: "bg-amarillo text-navy", label: "A retirar" },
+  POR_ENTREGAR: { color: "bg-amarillo text-navy", label: "Por entregar" },
   ENVIADO: { color: "bg-emerald-600/15 text-emerald-800", label: "Enviado" },
   ENTREGADO: { color: "bg-emerald-600/15 text-emerald-800", label: "Entregado" },
   ERROR_CREACION: { color: "bg-red-600/15 text-red-700", label: "Error" },
