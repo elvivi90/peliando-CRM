@@ -11,20 +11,23 @@ import { sincronizarEnvioConTiendup } from "@/lib/services/envios";
 const DIAS_PARA_AVISAR = 3;
 
 /**
- * Chequeo diario de las ventas de Tiendup pendientes de entrega (ver
- * vercel.json). Consulta en Tiendup solo esas ordenes, no todas: cuando una
- * figura como enviada, registra la entrega de lo que faltaba y la venta pasa
- * a entregada. Despues, si quedan pedidos pagados hace mas de
- * DIAS_PARA_AVISAR dias sin entregar, avisa al equipo. Protegida con
- * CRON_SECRET, igual que cobros-pendientes.
+ * Chequeo de las ventas de Tiendup pendientes de entrega, cada 5 minutos
+ * desde Supabase Cron (ver scripts/supabase-cron.sql; el cron de Vercel en
+ * el plan Hobby solo corre una vez por dia). Consulta en Tiendup solo esas
+ * ordenes, no todas: cuando una figura como enviada, registra la entrega de
+ * lo que faltaba y la venta pasa a entregada. En la llamada diaria con
+ * ?avisar=1, si quedan pedidos pagados hace mas de DIAS_PARA_AVISAR dias sin
+ * entregar, avisa al equipo. Protegida con CRON_SECRET, igual que
+ * cobros-pendientes.
  *
  * La entrega queda con la fecha del chequeo: Tiendup no informa cuando se
- * despacho, asi que puede quedar hasta un dia despues de la real.
+ * despacho, asi que puede quedar unos minutos despues de la real.
  *
  * Tambien revisa las ventas con Envio por Correo todavia "Por enviar" o sin
  * numero de seguimiento (aunque la venta ya figure entregada): les copia el
  * despacho y el seguimiento de Tiendup (ver sincronizarEnvioConTiendup).
- * Corre antes que envios-correo, que despues sigue esos numeros.
+ * Es lo que mantiene al dia el estado de los envios: envios-correo (el
+ * seguimiento en MiCorreo) no esta programado.
  */
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -97,7 +100,11 @@ export async function GET(request: NextRequest) {
   const atrasadas = pendientes.filter(
     (v) => !entregadas.has(v.id) && differenceInCalendarDays(hoy, v.fecha) > DIAS_PARA_AVISAR,
   );
-  if (atrasadas.length > 0) {
+  // El chequeo corre cada 5 minutos (Supabase Cron, ver
+  // scripts/supabase-cron.sql), pero el aviso solo en la llamada diaria que
+  // trae ?avisar=1.
+  const avisar = request.nextUrl.searchParams.get("avisar") === "1";
+  if (avisar && atrasadas.length > 0) {
     const masVieja = atrasadas[0];
     const pedidos = atrasadas.length === 1 ? "1 pedido" : `${atrasadas.length} pedidos`;
     await enviarNotificacion({
