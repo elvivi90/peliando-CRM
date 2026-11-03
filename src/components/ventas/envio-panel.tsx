@@ -6,6 +6,7 @@ import { EnvioBadge } from "@/components/ui/badge";
 import { CamposEnvio, envioCompleto, type DatosEnvioForm } from "@/components/ventas/campos-envio";
 import { formatMoney } from "@/lib/format";
 import { nombreProvincia } from "@/lib/provincias";
+import { separarTelefono } from "@/lib/telefono";
 
 export type EnvioDetalle = DatosEnvioForm & {
   id: string;
@@ -64,6 +65,8 @@ export function EnvioPanel({
     .filter(Boolean)
     .join(" · ");
   const seguimiento = envio.trackingNumber ?? trackingTiendup ?? null;
+  // Separado para corregirlo en el portal de MiCorreo, que corta mal el area.
+  const telefono = separarTelefono(envio.destinatarioTelefono);
   const otroDestinatario =
     !nombreCliente || envio.destinatarioNombre.trim().toLowerCase() !== nombreCliente.trim().toLowerCase();
 
@@ -111,6 +114,18 @@ export function EnvioPanel({
             <div className="col-span-2">
               <Dato label="Recibe" value={envio.destinatarioNombre} />
             </div>
+          )}
+          {telefono ? (
+            <>
+              <Dato label="Cód. de área" value={telefono.area} />
+              <Dato label="Teléfono" value={telefono.numero} />
+            </>
+          ) : (
+            envio.destinatarioTelefono && (
+              <div className="col-span-2">
+                <Dato label="Teléfono" value={envio.destinatarioTelefono} />
+              </div>
+            )
           )}
           <Dato label="Seguimiento" value={seguimiento ?? "Todavía sin número"} />
           <Dato
