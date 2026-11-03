@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EnvioBadge, TipoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { ponerAlDiaEnviosConTiendup } from "@/lib/services/envios";
 import type { TipoVenta } from "@prisma/client";
 
 const TIPOS: { value: TipoVenta | ""; label: string }[] = [
@@ -32,8 +33,15 @@ export default async function VentasPage({
     },
     orderBy: { fecha: "desc" },
     take: 100,
-    include: { cliente: true, producto: true, evento: true, envio: { select: { estado: true } } },
+    include: {
+      cliente: true,
+      producto: true,
+      evento: true,
+      envio: { select: { id: true, estado: true, trackingNumber: true } },
+    },
   });
+  // Lo que el equipo ya despacho en Tiendup se ve aca sin esperar al cron.
+  await ponerAlDiaEnviosConTiendup(ventas);
 
   return (
     <div>

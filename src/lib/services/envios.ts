@@ -255,6 +255,46 @@ export function cambiosEnvioSegunTiendup(
   return Object.keys(cambios).length > 0 ? cambios : null;
 }
 
+/**
+ * Para el listado de ventas: pone al dia (en la base y en los objetos que se
+ * pasan) los envios de ventas de Tiendup que siguen POR_ENVIAR o sin numero
+ * de seguimiento, sin esperar al cron diario. Como mucho `maximo` consultas
+ * a Tiendup por llamada (golpearla seguido devuelve 403 por un rato); si
+ * Tiendup no responde, ese envio queda como estaba.
+ */
+export async function ponerAlDiaEnviosConTiendup(
+  ventas: {
+    tiendupOrderId: number | null;
+    envio: Pick<Envio, "id" | "estado" | "trackingNumber"> | null;
+  }[],
+  maximo = 10,
+) {
+  const pendientes = ventas
+    .filter(
+      (v) =>
+        v.tiendupOrderId !== null &&
+        v.envio &&
+        (v.envio.estado === "POR_ENVIAR" ||
+          (v.envio.estado === "ENVIADO" && !v.envio.trackingNumber)),
+    )
+    .slice(0, maximo);
+
+  await Promise.all(
+    pendientes.map(async (v) => {
+      const envio = v.envio!;
+      try {
+        const orden = await fetchTiendupOrder(v.tiendupOrderId!, { timeoutMs: 4000 });
+        const cambios = cambiosEnvioSegunTiendup(envio, orden);
+        if (!cambios) return;
+        await prisma.envio.update({ where: { id: envio.id }, data: cambios });
+        Object.assign(envio, cambios);
+      } catch (err) {
+        console.error(`[tiendup] poner al dia el envio de la orden #${v.tiendupOrderId}:`, err);
+      }
+    }),
+  );
+}
+
 export async function sincronizarEnvioConTiendup(
   envio: Pick<Envio, "id" | "estado" | "trackingNumber">,
   orden: Pick<TiendupOrder, "status" | "shipping">,
