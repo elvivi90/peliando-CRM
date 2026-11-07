@@ -29,6 +29,34 @@ export function formatDate(value: Date | string | null | undefined) {
   return dateFormatter.format(new Date(value));
 }
 
+const fechaHoraArgentina = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const fechaArgentina = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/**
+ * Fecha y hora de una venta en hora de Argentina ("05/11/2026 22:22"). Las
+ * ventas sin hora conocida (medianoche exacta, ver partesArgentina) muestran
+ * solo el dia.
+ */
+export function formatFechaHora(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  const d = new Date(value);
+  const sinHora = (d.getTime() - 3 * 60 * 60 * 1000) % 86_400_000 === 0;
+  return (sinHora ? fechaArgentina : fechaHoraArgentina).format(d).replace(",", "");
+}
+
 export function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
   if (value === null || value === undefined) return 0;
   return Number(value);

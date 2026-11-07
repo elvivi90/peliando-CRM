@@ -1,21 +1,23 @@
 import Link from "next/link";
-import { startOfMonth } from "date-fns";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { mesActualArgentina, periodoArgentina } from "@/lib/date";
 import { mercadoPagoConfigurado } from "@/lib/services/mercado-pago";
 import { costoCobro, nombreMedio } from "@/lib/services/pagos-mercadopago";
 
 export default async function MercadoPagoPage() {
   const ahora = new Date();
+  const { anio, mes } = mesActualArgentina();
+  const { inicio: inicioMes } = periodoArgentina(anio, mes);
   const [porLiberar, delMes, recientes] = await Promise.all([
     prisma.pagoMercadoPago.findMany({
       where: { estado: "approved", fechaLiberacion: { gt: ahora } },
       orderBy: { fechaLiberacion: "asc" },
     }),
-    prisma.pagoMercadoPago.findMany({ where: { fechaAprobado: { gte: startOfMonth(ahora) } } }),
+    prisma.pagoMercadoPago.findMany({ where: { fechaAprobado: { gte: inicioMes } } }),
     prisma.pagoMercadoPago.findMany({
       orderBy: { fechaAprobado: "desc" },
       take: 50,

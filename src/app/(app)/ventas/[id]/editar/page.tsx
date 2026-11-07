@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { VentaForm } from "@/components/ventas/venta-form";
-import { fechaInputValue } from "@/lib/date";
+import { partesArgentina } from "@/lib/date";
 import { nombreCliente } from "@/lib/format";
 import { saldoConcesion } from "@/lib/services/concesion";
 
@@ -76,7 +76,7 @@ export default async function EditarVentaPage({
           costoEnvio: venta.costoEnvio.toNumber(),
           formaPago: venta.formaPago,
           eventoId: venta.eventoId,
-          fecha: fechaInputValue(venta.fecha),
+          ...partesArgentina(venta.fecha),
           concesion,
         }}
       />

@@ -1,16 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma, type FormaPago, type OrigenVenta, type TipoVenta } from "@prisma/client";
 import {
-  startOfMonth,
-  endOfMonth,
-  startOfYear,
-  endOfYear,
-  eachDayOfInterval,
-  format,
-  subMonths,
-  startOfDay,
-} from "date-fns";
-import { es } from "date-fns/locale";
+  mesActualArgentina,
+  partesArgentina,
+  periodoArgentina,
+  periodoCalendario,
+} from "@/lib/date";
 import { costoCobro } from "@/lib/services/pagos-mercadopago";
 
 type VentaPeriodo = {
@@ -80,13 +75,21 @@ function totales(ventas: VentaPeriodo[], gastos: GastoPeriodo[]) {
   };
 }
 
-async function resumirPeriodo(inicio: Date, fin: Date) {
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+// Las ventas tienen dia y hora reales y se cortan por el mes de Argentina
+// (una del 31 a las 22 h es de ese mes, aunque en UTC ya sea el 1). Los
+// gastos son fechas de calendario sin hora: van por su dia UTC (ver
+// periodoCalendario).
+async function resumirPeriodo(anio: number, mes?: number) {
+  const pv = periodoArgentina(anio, mes);
+  const pg = periodoCalendario(anio, mes);
   const [ventas, gastos] = await Promise.all([
     prisma.venta.findMany({
-      where: { fecha: { gte: inicio, lte: fin } },
+      where: { fecha: { gte: pv.inicio, lte: pv.fin } },
       include: { pagoMercadoPago: true },
     }),
-    prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: inicio, lte: fin } } }),
+    prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: pg.inicio, lte: pg.fin } } }),
   ]);
 
   const totalPorTipo = {
@@ -107,17 +110,19 @@ async function resumirPeriodo(inicio: Date, fin: Date) {
 }
 
 export async function getResumenMes(anio: number, mes: number) {
-  const inicio = startOfMonth(new Date(anio, mes - 1, 1));
-  const fin = endOfMonth(inicio);
-  const { ventas, resumen } = await resumirPeriodo(inicio, fin);
+  const { ventas, resumen } = await resumirPeriodo(anio, mes);
 
-  const dias = eachDayOfInterval({ start: inicio, end: fin });
-  const ventasPorDia = dias.map((dia) => {
-    const key = format(dia, "yyyy-MM-dd");
-    const totalDia = ventas
-      .filter((v) => format(startOfDay(v.fecha), "yyyy-MM-dd") === key)
-      .reduce((s, v) => s.plus(v.precioTotal), new Prisma.Decimal(0));
-    return { dia: format(dia, "dd/MM"), total: totalDia.toNumber() };
+  const totalPorDia = new Map<string, Prisma.Decimal>();
+  for (const v of ventas) {
+    const dia = partesArgentina(v.fecha).fecha;
+    totalPorDia.set(dia, (totalPorDia.get(dia) ?? new Prisma.Decimal(0)).plus(v.precioTotal));
+  }
+  const diasDelMes = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+  const mm = String(mes).padStart(2, "0");
+  const ventasPorDia = Array.from({ length: diasDelMes }, (_, i) => {
+    const dd = String(i + 1).padStart(2, "0");
+    const total = totalPorDia.get(`${anio}-${mm}-${dd}`) ?? new Prisma.Decimal(0);
+    return { dia: `${dd}/${mm}`, total: total.toNumber() };
   });
 
   return { ...resumen, ventasPorDia };
@@ -126,17 +131,16 @@ export async function getResumenMes(anio: number, mes: number) {
 // Reporte anual: los mismos totales sobre el año entero y el detalle mes a
 // mes (para el grafico y la tabla), calculado sobre una sola consulta.
 export async function getResumenAnio(anio: number) {
-  const inicio = startOfYear(new Date(anio, 0, 1));
-  const fin = endOfYear(inicio);
-  const { ventas, gastos, resumen } = await resumirPeriodo(inicio, fin);
+  const { ventas, gastos, resumen } = await resumirPeriodo(anio);
+  const mesDeVenta = (fecha: Date) => Number(partesArgentina(fecha).fecha.slice(5, 7)) - 1;
 
   const porMes = Array.from({ length: 12 }, (_, mes) => {
     const delMes = totales(
-      ventas.filter((v) => v.fecha.getMonth() === mes),
-      gastos.filter((g) => g.fecha.getMonth() === mes),
+      ventas.filter((v) => mesDeVenta(v.fecha) === mes),
+      gastos.filter((g) => g.fecha.getUTCMonth() === mes),
     );
     return {
-      mes: format(new Date(anio, mes, 1), "MMM", { locale: es }),
+      mes: MESES_CORTOS[mes],
       ventas: delMes.totalVentas.toNumber(),
       gastos: delMes.totalGastos.toNumber(),
       neto: delMes.neto.toNumber(),
@@ -150,22 +154,24 @@ export async function getResumenAnio(anio: number) {
 // Años para el selector: desde la primera venta hasta el actual.
 export async function getAniosConVentas() {
   const primera = await prisma.venta.findFirst({ orderBy: { fecha: "asc" }, select: { fecha: true } });
-  const actual = new Date().getFullYear();
-  const desde = Math.min(primera?.fecha.getFullYear() ?? actual, actual);
+  const actual = mesActualArgentina().anio;
+  const primerAnio = primera ? Number(partesArgentina(primera.fecha).fecha.slice(0, 4)) : actual;
+  const desde = Math.min(primerAnio, actual);
   return Array.from({ length: actual - desde + 1 }, (_, i) => desde + i);
 }
 
 export async function getComparacionMeses(cantidadMeses = 6) {
-  const ahora = new Date();
-  const meses = Array.from({ length: cantidadMeses }, (_, i) =>
-    subMonths(startOfMonth(ahora), cantidadMeses - 1 - i),
-  );
+  const actual = mesActualArgentina();
+  const meses = Array.from({ length: cantidadMeses }, (_, i) => {
+    const n = actual.anio * 12 + (actual.mes - 1) - (cantidadMeses - 1 - i);
+    return { anio: Math.floor(n / 12), mes: (n % 12) + 1 };
+  });
 
   const resultados = await Promise.all(
     meses.map(async (m) => {
-      const resumen = await getResumenMes(m.getFullYear(), m.getMonth() + 1);
+      const resumen = await getResumenMes(m.anio, m.mes);
       return {
-        mes: format(m, "MMM yy", { locale: es }),
+        mes: `${MESES_CORTOS[m.mes - 1]} ${String(m.anio).slice(2)}`,
         ventas: resumen.totalVentas.toNumber(),
         gastos: resumen.totalGastos.toNumber(),
         neto: resumen.neto.toNumber(),

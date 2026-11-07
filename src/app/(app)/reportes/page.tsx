@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { after } from "next/server";
-import { endOfMonth, endOfYear, startOfMonth, startOfYear } from "date-fns";
 import { MapaVentas } from "@/components/reportes/mapa-ventas";
 import { getMapaVentas } from "@/lib/services/mapa";
 import { geocodificarPendientes } from "@/lib/services/geocoding";
@@ -9,6 +8,7 @@ import { VentasChart } from "@/components/dashboard/ventas-chart";
 import { ComparacionChart } from "@/components/dashboard/comparacion-chart";
 import { MediosPagoChart } from "@/components/reportes/medios-pago-chart";
 import { formatMoney } from "@/lib/format";
+import { mesActualArgentina, periodoArgentina } from "@/lib/date";
 import {
   getResumenMes,
   getResumenAnio,
@@ -30,14 +30,14 @@ export default async function ReportesPage({
 }) {
   const { periodo, anio, mes } = await searchParams;
   const anual = periodo === "anio";
-  const ahora = new Date();
-  const anioSel = anio ? Number(anio) : ahora.getFullYear();
-  const mesSel = mes ? Number(mes) : ahora.getMonth() + 1;
+  const ahora = mesActualArgentina();
+  const anioSel = anio ? Number(anio) : ahora.anio;
+  const mesSel = mes ? Number(mes) : ahora.mes;
 
-  const inicioPeriodo = anual
-    ? startOfYear(new Date(anioSel, 0, 1))
-    : startOfMonth(new Date(anioSel, mesSel - 1, 1));
-  const finPeriodo = anual ? endOfYear(inicioPeriodo) : endOfMonth(inicioPeriodo);
+  const { inicio: inicioPeriodo, fin: finPeriodo } = periodoArgentina(
+    anioSel,
+    anual ? undefined : mesSel,
+  );
 
   const [mensual, anualResumen, comparacion, inversion, anios, mapa] = await Promise.all([
     anual ? null : getResumenMes(anioSel, mesSel),

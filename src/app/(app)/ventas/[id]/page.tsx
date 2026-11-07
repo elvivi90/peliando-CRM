@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
-import { FORMA_PAGO_LABEL, formatDate, formatMoney, nombreCliente } from "@/lib/format";
+import { FORMA_PAGO_LABEL, formatDate, formatFechaHora, formatMoney, nombreCliente } from "@/lib/format";
 import { EntregaCobroPanel } from "@/components/ventas/entrega-cobro-panel";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarVenta } from "@/app/(app)/ventas/actions";
@@ -72,7 +72,7 @@ export default async function VentaDetailPage({
     <div className="flex flex-col gap-6 max-w-2xl">
       <PageHeader
         title="Detalle de la venta"
-        subtitle={formatDate(venta.fecha)}
+        subtitle={formatFechaHora(venta.fecha)}
         action={
           <div className="flex items-center gap-2">
             <TipoBadge tipo={venta.tipo} />

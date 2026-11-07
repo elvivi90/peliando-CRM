@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseFechaInput } from "@/lib/date";
+import { parseFechaVenta } from "@/lib/date";
 
 const opcional = z
   .string()
@@ -122,10 +122,13 @@ export const ventaSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v && v.trim() !== "" ? v : undefined)),
-  fecha: z
-    .string()
-    .optional()
-    .transform((v) => (v && v.trim() !== "" ? parseFechaInput(v) : new Date())),
-});
+  // Dia y hora en hora de Argentina; sin dia es ahora, sin hora queda "sin
+  // hora" (medianoche, ver parseFechaVenta).
+  fecha: z.string().optional(),
+  hora: z.string().optional(),
+}).transform(({ hora, ...d }) => ({
+  ...d,
+  fecha: d.fecha && d.fecha.trim() !== "" ? parseFechaVenta(d.fecha.trim(), hora) : new Date(),
+}));
 
 export type VentaInput = z.input<typeof ventaSchema>;

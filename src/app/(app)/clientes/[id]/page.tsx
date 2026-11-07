@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { Comentarios } from "@/components/clientes/comentarios";
-import { contactoCliente, formatDate, formatMoney, linkInstagram, nombreCliente } from "@/lib/format";
+import { contactoCliente, formatDate, formatFechaHora, formatMoney, linkInstagram, nombreCliente } from "@/lib/format";
 import { getCuentaCorriente } from "@/lib/services/cuenta-corriente";
 import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
@@ -192,7 +192,7 @@ export default async function ClienteDetailPage({
                   <tbody>
                     {ventas.map((v) => (
                       <tr key={v.id} className="border-b border-navy/10 last:border-0">
-                        <td className="px-5 py-2.5 text-navy/70">{formatDate(v.fecha)}</td>
+                        <td className="px-5 py-2.5 text-navy/70">{formatFechaHora(v.fecha)}</td>
                         <td className="px-5 py-2.5">{v.producto.nombre}</td>
                         <td className="px-5 py-2.5">
                           {v.cantidad}

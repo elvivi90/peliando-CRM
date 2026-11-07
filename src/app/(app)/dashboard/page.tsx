@@ -6,14 +6,18 @@ import { VentasChart } from "@/components/dashboard/ventas-chart";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { getResumenMes } from "@/lib/services/reportes";
+import { mesActualArgentina } from "@/lib/date";
 import { resumenCuentasCorrientesPendientes } from "@/lib/services/cuenta-corriente";
 
-const MES_NOMBRE = new Intl.DateTimeFormat("es-AR", { month: "long" });
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
 
 export default async function DashboardPage() {
-  const ahora = new Date();
+  const ahora = mesActualArgentina();
   const [resumen, pendientes, ultimasVentas] = await Promise.all([
-    getResumenMes(ahora.getFullYear(), ahora.getMonth() + 1),
+    getResumenMes(ahora.anio, ahora.mes),
     resumenCuentasCorrientesPendientes(),
     prisma.venta.findMany({
       orderBy: { fecha: "desc" },
@@ -31,7 +35,7 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl lg:text-[28px] font-black tracking-tight capitalize">
-          {MES_NOMBRE.format(ahora)} {ahora.getFullYear()}
+          {MESES[ahora.mes - 1]} {ahora.anio}
         </h1>
         <Link href="/reportes" className="text-sm font-extrabold underline decoration-2">
           Ver reportes completos →

@@ -7,8 +7,8 @@ import {
   previsualizarPrecio,
   type PrevisualizacionPrecio,
 } from "@/app/(app)/ventas/actions";
-import { FORMA_PAGO_LABEL, formatDate, formatMoney, nombreCliente } from "@/lib/format";
-import { parseFechaInput, todayInputValue } from "@/lib/date";
+import { FORMA_PAGO_LABEL, formatFechaHora, formatMoney, nombreCliente } from "@/lib/format";
+import { horaActualInputValue, parseFechaVenta, todayInputValue } from "@/lib/date";
 import { SelectorConAlta } from "@/components/ventas/selector-con-alta";
 import { ModalClienteRapido, type ClienteCreado } from "@/components/ventas/modal-cliente-rapido";
 import { ModalClienteMinorista } from "@/components/ventas/modal-cliente-minorista";
@@ -54,6 +54,8 @@ export type VentaEditable = {
   formaPago: keyof typeof FORMA_PAGO_LABEL | null;
   eventoId: string | null;
   fecha: string;
+  // "HH:mm" en hora de Argentina; vacio si no se sabe (ventas viejas).
+  hora: string;
   // Solo liquidaciones de concesion: cliente y producto quedan fijos, el
   // precio es el cobrado (no sale de la lista) y la cantidad tiene tope.
   concesion: { maxCantidad: number | null } | null;
@@ -101,6 +103,7 @@ export function VentaForm({
   const [tramoElegido, setTramoElegido] = useState<string | null>(null);
 
   const [fecha, setFecha] = useState(() => venta?.fecha ?? todayInputValue());
+  const [hora, setHora] = useState(() => (venta ? venta.hora : horaActualInputValue()));
   const [eventoId, setEventoId] = useState(venta?.eventoId ?? "");
   // null = usar el monto por defecto (rápida: total cobrado; mayorista: 0)
   const [montoInput, setMontoInput] = useState<string | null>(null);
@@ -317,6 +320,7 @@ export function VentaForm({
           formaPago,
           costoEnvio: conEnvio ? "0" : costoEnvio || "0",
           fecha,
+          hora,
           envio: conEnvio ? datosEnvio : undefined,
         };
         if (venta) await actualizarVenta(venta.id, input, mantenerPrecio);
@@ -558,6 +562,15 @@ export function VentaForm({
               />
             </Campo>
 
+            <Campo label="Hora">
+              <input
+                type="time"
+                className="input-chunky w-32"
+                value={hora}
+                onChange={(e) => setHora(e.target.value)}
+              />
+            </Campo>
+
             <Campo
               label="Evento"
               insignia={eventoCreado ? { texto: "Creado recién", tono: "rosa" } : undefined}
@@ -675,7 +688,7 @@ export function VentaForm({
               )}
               <FilaResumen label="Precio" value={formatMoney(precioTotal)} />
               {formaPago && <FilaResumen label="Forma de pago" value={FORMA_PAGO_LABEL[formaPago]} />}
-              <FilaResumen label="Fecha" value={formatDate(parseFechaInput(fecha))} />
+              <FilaResumen label="Fecha" value={formatFechaHora(parseFechaVenta(fecha, hora))} />
               {eventoSel && <FilaResumen label="Evento" value={eventoSel.nombre} />}
               <FilaResumen label={venta ? "Cobrado" : "Cobrado ahora"} value={formatMoney(montoNum)} />
               {conEnvio ? (
