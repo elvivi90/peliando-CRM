@@ -57,6 +57,23 @@ export function formatFechaHora(value: Date | string | null | undefined) {
   return (sinHora ? fechaArgentina : fechaHoraArgentina).format(d).replace(",", "");
 }
 
+const horaArgentina = new Intl.DateTimeFormat("es-AR", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * Lo mismo que formatFechaHora pero por separado, para mostrar la hora en
+ * una linea aparte ("05/11/2026" y "22:22"). Hora null si no se conoce.
+ */
+export function fechaYHora(value: Date | string) {
+  const d = new Date(value);
+  const sinHora = (d.getTime() - 3 * 60 * 60 * 1000) % 86_400_000 === 0;
+  return { fecha: fechaArgentina.format(d), hora: sinHora ? null : horaArgentina.format(d) };
+}
+
 export function toNumber(value: Prisma.Decimal | number | string | null | undefined) {
   if (value === null || value === undefined) return 0;
   return Number(value);

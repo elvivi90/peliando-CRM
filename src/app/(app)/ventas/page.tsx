@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui/page-header";
 import { EnvioBadge, TipoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatFechaHora, formatMoney, nombreCliente } from "@/lib/format";
+import { formatMoney, nombreCliente } from "@/lib/format";
+import { FechaHora } from "@/components/ui/fecha-hora";
 import { ponerAlDiaConTiendup } from "@/lib/services/envios";
 import type { TipoVenta } from "@prisma/client";
 
@@ -138,7 +139,7 @@ export default async function VentasPage({
                     key={v.id}
                     className="relative border-b border-navy/10 last:border-0 hover:bg-navy/5"
                   >
-                    <td className="px-5 py-3 text-navy/70 whitespace-nowrap">{formatFechaHora(v.fecha)}</td>
+                    <td className="px-5 py-3 text-navy/70 whitespace-nowrap"><FechaHora value={v.fecha} /></td>
                     <td className="px-5 py-3">
                       <Link
                         href={`/ventas/${v.id}`}
