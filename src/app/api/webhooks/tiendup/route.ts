@@ -9,6 +9,15 @@ import { geocodificarPendientes } from "@/lib/services/geocoding";
 import { envioCompletado, fetchTiendupOrder, type TiendupOrder } from "@/lib/services/tiendup";
 import { correoConfigurado } from "@/lib/services/correo-argentino";
 import { crearEnvioEnCorreo, datosEnvioTiendup } from "@/lib/services/envios";
+import {
+  confirmarPagoTiendup,
+  esTransferencia,
+  ordenCancelada,
+  ordenPagada,
+  sucursalDeRetiro,
+} from "@/lib/services/ventas-tiendup";
+import { descontarStockTiendup } from "@/lib/services/concesion";
+import { revalidatePath } from "next/cache";
 
 /**
  * Webhook de Tiendup (seccion 3.3): crea automaticamente una venta minorista
@@ -17,9 +26,11 @@ import { crearEnvioEnCorreo, datosEnvioTiendup } from "@/lib/services/envios";
  * Referencia (relevada de https://public-api.tiendup.com/openapi y
  * https://intercom.help/tiendup/es/articles/13833124-webhooks-en-tiendup):
  * - En el panel de Tiendup (Configuraciones -> Webhooks) se crea un webhook
- *   con esta URL, suscripto SOLO al evento `orders.payment_paid` (no
- *   `orders.creation`, que puede no llegar a pagarse nunca). Tiendup genera
- *   ahi un secreto propio para firmar los requests.
+ *   con esta URL, suscripto a `orders.payment_paid` y `orders.creation`.
+ *   De la creacion solo se usan las ordenes por transferencia: entran como
+ *   venta pagoPendiente y se confirman con el payment_paid que manda Tiendup
+ *   cuando el equipo marca el pago en el panel (ver services/ventas-tiendup).
+ *   Tiendup genera ahi un secreto propio para firmar los requests.
  * - Cada request llega firmado con el header `x-tiendup-signature`. El
  *   algoritmo exacto no esta documentado publicamente; se asume HMAC-SHA256
  *   sobre el body crudo (convencion estandar de la industria). Si Tiendup
@@ -94,14 +105,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body invalido" }, { status: 400 });
   }
 
-  // Solo nos interesa el pago confirmado; cualquier otro evento (incluido
-  // "webhooks.test", el de prueba del panel) se reconoce con 200 y sin efecto
-  // para que Tiendup no lo siga reintentando.
+  // Interesan el pago confirmado y la creacion de la orden (esta ultima solo
+  // para las transferencias, ver services/ventas-tiendup). Cualquier otro
+  // evento (incluido "webhooks.test", el de prueba del panel) se reconoce
+  // con 200 y sin efecto para que Tiendup no lo siga reintentando.
   const b = body as Record<string, unknown>;
   const eventType = (b?.type ?? b?.event) as string | undefined;
-  if (eventType !== "orders.payment_paid") {
+  if (eventType !== "orders.payment_paid" && eventType !== "orders.creation") {
     return NextResponse.json({ ok: true, skipped: eventType ?? "sin tipo" });
   }
+  const esPago = eventType === "orders.payment_paid";
 
   const orderId = extraerOrderId(body);
   if (!orderId) {
@@ -113,8 +126,10 @@ export async function POST(request: NextRequest) {
   // tiendupOrderId (ver el catch del create mas abajo), no de este chequeo:
   // si dos entregas del mismo evento llegan casi juntas, las dos podrian
   // pasar este find antes de que la primera termine de insertar.
+  // La excepcion es el pago de una transferencia que ya entro con
+  // orders.creation: ahi la venta existe y hay que confirmarla.
   const yaExiste = await prisma.venta.findFirst({ where: { tiendupOrderId: orderId } });
-  if (yaExiste) {
+  if (yaExiste && !(esPago && yaExiste.pagoPendiente)) {
     return NextResponse.json({ ok: true, ventaId: yaExiste.id, duplicado: true });
   }
 
@@ -127,6 +142,17 @@ export async function POST(request: NextRequest) {
       { status: 502 },
     );
   }
+
+  if (yaExiste) return confirmarTransferencia(yaExiste.id, order);
+
+  // De orders.creation solo entran las transferencias todavia abiertas; las
+  // de Mercado Pago llegan pagadas con orders.payment_paid.
+  if (!esPago && (!esTransferencia(order) || ordenCancelada(order))) {
+    return NextResponse.json({ ok: true, skipped: "orden creada que no es transferencia" });
+  }
+  // Una transferencia que ya figura pagada (se confirmo antes de que llegara
+  // este evento) entra como cualquier venta pagada.
+  const pagoPendiente = !esPago && !ordenPagada(order);
 
   const cantidad = order.items
     .filter((i) => !i.ecommerce_type || i.ecommerce_type === "retail")
@@ -192,7 +218,8 @@ export async function POST(request: NextRequest) {
   // queda pendiente de entrega y la completa el cron diario cuando Tiendup
   // la marque como enviada. El stock se descuenta igual ahora, como en una
   // venta manual con entrega pendiente.
-  const entregada = envioCompletado(order);
+  // Una transferencia sin confirmar no se entrega ni se envia todavia.
+  const entregada = !pagoPendiente && envioCompletado(order);
 
   // Destino del envio, para el mapa de ventas de Reportes. Un retiro en
   // sucursal no trae direccion (Tiendup no informa donde queda la sucursal).
@@ -207,7 +234,8 @@ export async function POST(request: NextRequest) {
   // Envio a domicilio: el CRM lo da de alta en Correo Argentino (antes se
   // cargaba a mano en el portal). Si ya figura despachado en Tiendup, se
   // cargo por fuera y no se vuelve a crear.
-  const datosEnvio = correoConfigurado() && !entregada ? datosEnvioTiendup(order) : null;
+  const datosEnvio =
+    correoConfigurado() && !entregada && !pagoPendiente ? datosEnvioTiendup(order) : null;
 
   try {
     const venta = await prisma.$transaction(async (tx) => {
@@ -221,14 +249,16 @@ export async function POST(request: NextRequest) {
           cantidadEntregada: entregada ? cantidad : 0,
           precioUnitario,
           precioTotal,
-          montoCobrado: precioTotal,
+          montoCobrado: pagoPendiente ? 0 : precioTotal,
           // Las pagadas por Mercado Pago no lo necesitan: el medio sale del
           // cobro que trae el cron pagos-mercadopago.
-          formaPago: /transferencia/i.test(order.gateway?.name ?? "") ? "TRANSFERENCIA" : null,
+          formaPago: esTransferencia(order) ? "TRANSFERENCIA" : null,
           origen: "WEBHOOK_TIENDUP",
           fecha,
           descripcion,
           tiendupOrderId: orderId,
+          tiendupHash: order.hash || null,
+          pagoPendiente,
           ...destino,
         },
       });
@@ -239,10 +269,8 @@ export async function POST(request: NextRequest) {
       const envio = datosEnvio
         ? await tx.envio.create({ data: { ventaId: nuevaVenta.id, ...datosEnvio } })
         : null;
-      await tx.producto.update({
-        where: { id: producto.id },
-        data: { stockActual: { decrement: cantidad } },
-      });
+      // El stock de una transferencia se descuenta al confirmarse el pago.
+      if (!pagoPendiente) await descontarStockTiendup(tx, nuevaVenta, sucursalDeRetiro(order));
 
       return { ...nuevaVenta, envioId: envio?.id ?? null };
     });
@@ -263,24 +291,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const resumen = `${nombreCliente(cliente)} · ${cantidad} u. · ${formatMoney(precioTotal)}`;
     after(() =>
-      enviarNotificacion({
-        titulo: "Venta en Tiendup",
-        cuerpo: `${nombreCliente(cliente)} · ${cantidad} u. · ${formatMoney(precioTotal)}`,
-        url: `/ventas/${venta.id}`,
-      }),
+      enviarNotificacion(
+        pagoPendiente
+          ? {
+              titulo: "Transferencia a confirmar",
+              cuerpo: `${resumen}. Confirmá el pago en Tiendup cuando llegue la transferencia.`,
+              url: `/ventas/${venta.id}`,
+            }
+          : { titulo: "Venta en Tiendup", cuerpo: resumen, url: `/ventas/${venta.id}` },
+      ),
     );
 
-    return NextResponse.json({ ok: true, ventaId: venta.id }, { status: 201 });
+    return NextResponse.json({ ok: true, ventaId: venta.id, pagoPendiente }, { status: 201 });
   } catch (err) {
     // Dos entregas del mismo evento llegaron casi juntas y las dos pasaron el
     // chequeo de arriba: la restriccion @unique de tiendupOrderId rechaza la
     // segunda insercion. Se busca la venta que sí se creo y se responde igual
-    // que en el chequeo temprano, en vez de duplicar o devolver un error.
+    // que en el chequeo temprano, en vez de duplicar o devolver un error. Si
+    // la que gano fue la creacion de una transferencia y esto es el pago, se
+    // confirma.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       const venta = await prisma.venta.findUnique({ where: { tiendupOrderId: orderId } });
+      if (venta && esPago && venta.pagoPendiente) return confirmarTransferencia(venta.id, order);
       if (venta) return NextResponse.json({ ok: true, ventaId: venta.id, duplicado: true });
     }
     throw err;
   }
+}
+
+async function confirmarTransferencia(ventaId: string, order: TiendupOrder) {
+  const confirmada = await confirmarPagoTiendup(ventaId, order);
+  const envioId = confirmada?.envioId;
+  if (envioId) after(() => crearEnvioEnCorreo(envioId));
+  revalidarVenta(ventaId);
+  return NextResponse.json({ ok: true, ventaId, confirmada: confirmada !== null });
+}
+
+function revalidarVenta(ventaId: string) {
+  revalidatePath("/ventas");
+  revalidatePath(`/ventas/${ventaId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reportes");
+  revalidatePath("/productos");
 }

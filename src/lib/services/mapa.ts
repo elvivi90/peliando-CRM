@@ -43,7 +43,7 @@ function etiquetaLugar(localidad: string, provincia: string | null) {
  */
 export async function getMapaVentas(inicio: Date, fin: Date) {
   const ventas = await prisma.venta.findMany({
-    where: { fecha: { gte: inicio, lte: fin } },
+    where: { fecha: { gte: inicio, lte: fin }, pagoPendiente: false },
     include: { evento: true, cliente: true },
   });
 

@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario, requireAdminPrincipal, esAdminPrincipal } from "@/lib/auth";
 import { clienteSchema, type ClienteInput } from "@/lib/validation/cliente";
+import { parseFechaInput } from "@/lib/date";
 
 export async function crearCliente(input: ClienteInput) {
   const data = clienteSchema.parse(input);
@@ -160,4 +161,75 @@ export async function crearClienteMinoristaRapido(input: { nombre: string; apell
 
   revalidatePath("/clientes");
   return cliente;
+}
+
+const pagoCuentaCorrienteSchema = z.object({
+  monto: z.coerce.number().positive("El monto debe ser mayor a 0"),
+  formaPago: z.enum(["POSNET", "EFECTIVO", "TRANSFERENCIA"]).nullable(),
+  fecha: z.string().min(1),
+});
+
+/**
+ * Pago a cuenta de un mayorista o distribuidor por el monto que trae: se
+ * reparte entre sus ventas con saldo pendiente, de la mas vieja a la mas
+ * nueva (sumando a montoCobrado), y queda en el historial de pagos. No puede
+ * pasar de lo que debe.
+ */
+export async function registrarPagoCuentaCorriente(
+  clienteId: string,
+  input: { monto: string; formaPago: "POSNET" | "EFECTIVO" | "TRANSFERENCIA" | null; fecha: string },
+) {
+  const data = pagoCuentaCorrienteSchema.parse(input);
+  const usuario = await getCurrentUsuario();
+
+  const cliente = await prisma.cliente.findUniqueOrThrow({ where: { id: clienteId } });
+  if (cliente.tipo !== "MAYORISTA" && cliente.tipo !== "DISTRIBUIDOR") {
+    throw new Error("La cuenta corriente es solo de mayoristas y distribuidores.");
+  }
+
+  const ventaIds = await prisma.$transaction(async (tx) => {
+    const ventas = await tx.venta.findMany({
+      where: { clienteId, pagoPendiente: false },
+      orderBy: [{ fecha: "asc" }, { createdAt: "asc" }],
+      select: { id: true, precioTotal: true, montoCobrado: true },
+    });
+    const conSaldo = ventas.filter((v) => v.montoCobrado.lt(v.precioTotal));
+    const deuda = conSaldo.reduce(
+      (s, v) => s.plus(v.precioTotal.minus(v.montoCobrado)),
+      new Prisma.Decimal(0),
+    );
+
+    let restante = new Prisma.Decimal(data.monto);
+    if (restante.gt(deuda)) {
+      throw new Error(`El cliente debe ${deuda.toFixed(2)}: el pago no puede ser mayor.`);
+    }
+
+    const tocadas: string[] = [];
+    for (const v of conSaldo) {
+      if (restante.lte(0)) break;
+      const aplicar = Prisma.Decimal.min(restante, v.precioTotal.minus(v.montoCobrado));
+      await tx.venta.update({
+        where: { id: v.id },
+        data: { montoCobrado: { increment: aplicar } },
+      });
+      restante = restante.minus(aplicar);
+      tocadas.push(v.id);
+    }
+
+    await tx.pagoCuentaCorriente.create({
+      data: {
+        clienteId,
+        usuarioId: usuario.id,
+        monto: data.monto,
+        formaPago: data.formaPago,
+        fecha: parseFechaInput(data.fecha),
+      },
+    });
+    return tocadas;
+  });
+
+  revalidatePath(`/clientes/${clienteId}`);
+  revalidatePath("/ventas");
+  revalidatePath("/dashboard");
+  for (const id of ventaIds) revalidatePath(`/ventas/${id}`);
 }

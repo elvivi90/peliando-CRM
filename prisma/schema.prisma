@@ -78,6 +78,7 @@ model Usuario {
   gastos         Gasto[]
   comentarios    Comentario[]
   recargasCorreo RecargaCorreo[]
+  pagosCuentaCorriente PagoCuentaCorriente[]
 
   suscripcionesPush SuscripcionPush[]
 
@@ -113,6 +114,11 @@ model Cliente {
   direccion        String?
   // Usuario de Instagram sin la @ (solo mayoristas y distribuidores).
   instagram        String?
+  // Concesionario que ademas es punto de retiro de Tiendup: el nombre de la
+  // sucursal tal como viene en la orden (shipping.branch.name, ej. "NOIR
+  // café y películas"). Lo que retiran ahi sale de su concesion (ver
+  // RetiroConcesion).
+  sucursalTiendup  String?         @unique
   tipo             TipoCliente
   // Solo mayoristas con acuerdo propio que no sigue la lista de precios
   precioParticular Decimal?        @db.Decimal(12, 2)
@@ -124,9 +130,29 @@ model Cliente {
   comentarios Comentario[]
   ventas      Venta[]
   concesiones Concesion[]
+  pagos       PagoCuentaCorriente[]
 
   @@index([tipo])
   @@map("clientes")
+}
+
+// Pago a cuenta de un mayorista o distribuidor, por el monto que trae (no
+// tiene que coincidir con una venta). Al registrarlo se reparte entre sus
+// ventas con saldo pendiente, de la mas vieja a la mas nueva, sumando a
+// Venta.montoCobrado; este registro queda como historial de lo que pago.
+model PagoCuentaCorriente {
+  id        String     @id @default(uuid())
+  clienteId String
+  cliente   Cliente    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuarioId String
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id])
+  monto     Decimal    @db.Decimal(12, 2)
+  formaPago FormaPago?
+  fecha     DateTime
+  createdAt DateTime   @default(now())
+
+  @@index([clienteId])
+  @@map("pagos_cuenta_corriente")
 }
 
 model Comentario {
@@ -244,6 +270,15 @@ model Venta {
   // restriccion de la base en vez de una consulta previa + insert, que deja
   // una ventana para duplicar la venta si dos entregas llegan casi juntas.
   tiendupOrderId    Int?        @unique
+  // Codigo de la orden en el panel de Tiendup
+  // (https://mi.tiendup.com/orders/details/{hash}). Solo en las creadas
+  // despues de este campo.
+  tiendupHash       String?
+  // Orden de Tiendup por transferencia que todavia no se confirmo como
+  // pagada en el panel (ver services/ventas-tiendup). No descuenta stock,
+  // no da de alta el envio y no cuenta en Reportes hasta confirmarse; si la
+  // orden se cancela en Tiendup, la venta se borra.
+  pagoPendiente     Boolean     @default(false)
   fecha             DateTime    @default(now())
   createdAt         DateTime    @default(now())
 
@@ -251,6 +286,7 @@ model Venta {
   liquidacionConcesion LiquidacionConcesion?
   envio                Envio?
   pagoMercadoPago      PagoMercadoPago?
+  retirosConcesion     RetiroConcesion[]
 
   @@index([fecha])
   @@index([tipo])
@@ -285,8 +321,28 @@ model Concesion {
 
   liquidaciones LiquidacionConcesion[]
   devoluciones  DevolucionConcesion[]
+  retiros       RetiroConcesion[]
 
   @@map("concesiones")
+}
+
+// Unidades de la concesion que se llevaron clientes de Tiendup que eligieron
+// retirar en el local del concesionario (ej: Noir, ver
+// Cliente.sucursalTiendup). La venta es de Peliando (cobrada por Tiendup),
+// no del concesionario: resta del saldo de la concesion en lugar del stock
+// del Producto. Una venta puede repartirse entre varias concesiones si a la
+// mas vieja no le alcanzaba el saldo.
+model RetiroConcesion {
+  id          String    @id @default(uuid())
+  concesionId String
+  concesion   Concesion @relation(fields: [concesionId], references: [id], onDelete: Cascade)
+  ventaId     String
+  venta       Venta     @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  cantidad    Int
+  fecha       DateTime  @default(now())
+
+  @@index([ventaId])
+  @@map("retiros_concesion")
 }
 
 // Liquidacion periodica y manual: se convierte en una Venta real retroactiva

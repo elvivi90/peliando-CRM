@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { crearLiquidacion, crearDevolucion } from "@/app/(app)/concesion/actions";
 import { formatDate, formatMoney, nombreCliente } from "@/lib/format";
@@ -19,6 +20,13 @@ type Concesion = {
     fecha: Date | string;
   }[];
   devoluciones: { id: string; cantidad: number; fecha: Date | string }[];
+  // Cajas que retiraron en el local clientes de Tiendup.
+  retiros: {
+    id: string;
+    cantidad: number;
+    fecha: Date | string;
+    venta: { id: string; descripcion: string | null };
+  }[];
 };
 
 export function ConcesionCard({ concesion }: { concesion: Concesion }) {
@@ -169,7 +177,9 @@ export function ConcesionCard({ concesion }: { concesion: Concesion }) {
         </form>
       )}
 
-      {(concesion.liquidaciones.length > 0 || concesion.devoluciones.length > 0) && (
+      {(concesion.liquidaciones.length > 0 ||
+        concesion.devoluciones.length > 0 ||
+        concesion.retiros.length > 0) && (
         <details className="text-xs text-navy/60 mt-1">
           <summary className="cursor-pointer font-bold">Ver historial</summary>
           <ul className="mt-2 flex flex-col gap-1">
@@ -182,6 +192,14 @@ export function ConcesionCard({ concesion }: { concesion: Concesion }) {
             {concesion.devoluciones.map((d) => (
               <li key={d.id}>
                 {formatDate(d.fecha)} · Devuelto {d.cantidad} un.
+              </li>
+            ))}
+            {concesion.retiros.map((r) => (
+              <li key={r.id}>
+                {formatDate(r.fecha)} · Retirado {r.cantidad} un. ·{" "}
+                <Link href={`/ventas/${r.venta.id}`} className="underline">
+                  {r.venta.descripcion?.replace("Tiendup orden ", "Tiendup ") ?? "Venta"}
+                </Link>
               </li>
             ))}
           </ul>

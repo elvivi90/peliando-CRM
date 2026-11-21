@@ -13,6 +13,7 @@ import { eliminarVenta } from "@/app/(app)/ventas/actions";
 import { PagoPanel, PagoTiendup } from "@/components/ventas/pago-panel";
 import { EnvioVenta, EnvioVentaCargando } from "@/components/ventas/envio-venta";
 import { EnvioPanel } from "@/components/ventas/envio-panel";
+import { urlOrdenTiendup } from "@/lib/services/ventas-tiendup";
 
 const TIPO_LABEL: Record<string, string> = {
   MINORISTA: "Minorista",
@@ -77,15 +78,42 @@ export default async function VentaDetailPage({
         action={
           <div className="flex items-center gap-2">
             <TipoBadge tipo={venta.tipo} />
-            <Link href={`/ventas/${venta.id}/editar`} className="btn-secondary text-sm">
-              Editar
-            </Link>
+            {!venta.pagoPendiente && (
+              <Link href={`/ventas/${venta.id}/editar`} className="btn-secondary text-sm">
+                Editar
+              </Link>
+            )}
             {puedeEliminar && (
               <BotonEliminar entidad="esta venta" onEliminar={eliminarVenta.bind(null, venta.id)} />
             )}
           </div>
         }
       />
+
+      {/* Transferencia de Tiendup sin confirmar (ver services/ventas-tiendup):
+          se confirma en el panel de Tiendup y el CRM la toma solo. */}
+      {venta.pagoPendiente && (
+        <div className="card-chunky p-5 bg-amarillo/25 flex flex-col gap-3">
+          <div>
+            <h2 className="font-extrabold">Transferencia sin confirmar</h2>
+            <p className="text-sm text-navy/70 mt-1">
+              Cuando llegue la transferencia, marcá la orden como pagada en Tiendup. Ahí la venta se
+              confirma sola: se descuenta el stock y se da de alta el envío. Si cancelás la orden en
+              Tiendup, la venta se borra.
+            </p>
+          </div>
+          {venta.tiendupHash && (
+            <a
+              href={urlOrdenTiendup(venta.tiendupHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary text-sm self-start"
+            >
+              Confirmar en Tiendup ↗
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="card-chunky p-5 grid grid-cols-2 gap-4">
         {cliente ? (
@@ -163,13 +191,15 @@ export default async function VentaDetailPage({
         envio && <EnvioPanel envio={envio} nombreCliente={nombre} />
       )}
 
-      <EntregaCobroPanel
-        ventaId={venta.id}
-        cantidad={venta.cantidad}
-        cantidadEntregada={venta.cantidadEntregada}
-        precioTotal={venta.precioTotal.toNumber()}
-        montoCobrado={venta.montoCobrado.toNumber()}
-      />
+      {!venta.pagoPendiente && (
+        <EntregaCobroPanel
+          ventaId={venta.id}
+          cantidad={venta.cantidad}
+          cantidadEntregada={venta.cantidadEntregada}
+          precioTotal={venta.precioTotal.toNumber()}
+          montoCobrado={venta.montoCobrado.toNumber()}
+        />
+      )}
 
       {venta.entregas.length > 0 && (
         <div className="card-chunky p-5">

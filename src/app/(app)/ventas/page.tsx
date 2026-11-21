@@ -32,7 +32,9 @@ function estadoEntrega(v: {
   cantidadEntregada: number;
   origen: string;
   envioLocalidad: string | null;
+  pagoPendiente: boolean;
 }) {
+  if (v.pagoPendiente) return "PAGO_A_CONFIRMAR";
   if (v.envio) return v.envio.estado;
   if (v.cantidadEntregada >= v.cantidad) return "ENTREGADO";
   if (v.origen === "WEBHOOK_TIENDUP") return v.envioLocalidad ? "POR_ENVIAR" : "A_RETIRAR";
@@ -172,12 +174,14 @@ export default async function VentasPage({
                       {v.evento?.nombre ?? "—"}
                     </td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <Link
-                        href={`/ventas/${v.id}/editar`}
-                        className="relative z-10 text-xs font-bold text-navy/70 hover:underline"
-                      >
-                        Editar
-                      </Link>
+                      {!v.pagoPendiente && (
+                        <Link
+                          href={`/ventas/${v.id}/editar`}
+                          className="relative z-10 text-xs font-bold text-navy/70 hover:underline"
+                        >
+                          Editar
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

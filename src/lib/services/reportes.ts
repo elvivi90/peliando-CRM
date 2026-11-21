@@ -86,7 +86,8 @@ async function resumirPeriodo(anio: number, mes?: number) {
   const pg = periodoCalendario(anio, mes);
   const [ventas, gastos] = await Promise.all([
     prisma.venta.findMany({
-      where: { fecha: { gte: pv.inicio, lte: pv.fin } },
+      // Una transferencia de Tiendup sin confirmar todavia no es una venta.
+      where: { fecha: { gte: pv.inicio, lte: pv.fin }, pagoPendiente: false },
       include: { pagoMercadoPago: true },
     }),
     prisma.gasto.findMany({ where: { tipo: "OPERATIVO", fecha: { gte: pg.inicio, lte: pg.fin } } }),

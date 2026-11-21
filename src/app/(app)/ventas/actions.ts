@@ -17,10 +17,15 @@ import {
   type EnvioInput,
   type VentaInput,
 } from "@/lib/validation/venta";
-import { saldoConcesion } from "@/lib/services/concesion";
+import { INCLUDE_SALDO, cantidadDesdeConcesion, saldoConcesion } from "@/lib/services/concesion";
 import { correoConfigurado } from "@/lib/services/correo-argentino";
 import { crearEnvioEnCorreo } from "@/lib/services/envios";
 import type { TipoVenta } from "@prisma/client";
+
+// Transferencia de Tiendup sin confirmar (ver services/ventas-tiendup): se
+// confirma desde el panel de Tiendup, no desde el CRM.
+const MENSAJE_PAGO_PENDIENTE =
+  "Esta venta espera que se confirme la transferencia en Tiendup: hasta entonces no se puede modificar.";
 
 type VentaData = ReturnType<typeof ventaSchema.parse>;
 type ClienteVenta = Awaited<ReturnType<typeof prisma.cliente.findUniqueOrThrow>>;
@@ -183,11 +188,24 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
     include: {
       entregas: true,
       envio: true,
+      retirosConcesion: true,
       liquidacionConcesion: {
-        include: { concesion: { include: { liquidaciones: true, devoluciones: true } } },
+        include: { concesion: { include: INCLUDE_SALDO } },
       },
     },
   });
+
+  // Unidades retiradas en el local de un concesionario: salieron de su
+  // concesion, no del stock del producto (ver descontarStockTiendup).
+  const desdeConcesion = cantidadDesdeConcesion(anterior);
+  if (desdeConcesion > 0 && (data.productoId !== anterior.productoId || data.cantidad < desdeConcesion)) {
+    throw new Error(
+      `${desdeConcesion} unidades de esta venta salieron de una concesión: no se puede cambiar el producto ni bajar la cantidad de eso.`,
+    );
+  }
+
+  // Todavia no desconto stock: editarla lo devolveria de mas.
+  if (anterior.pagoPendiente) throw new Error(MENSAJE_PAGO_PENDIENTE);
 
   const esConcesion = anterior.tipo === "CONCESION";
   if (esConcesion) {
@@ -265,11 +283,11 @@ export async function actualizarVenta(id: string, input: VentaInput, mantenerPre
     if (!esConcesion) {
       await tx.producto.update({
         where: { id: anterior.productoId },
-        data: { stockActual: { increment: anterior.cantidad } },
+        data: { stockActual: { increment: anterior.cantidad - desdeConcesion } },
       });
       const producto = await tx.producto.update({
         where: { id: data.productoId },
-        data: { stockActual: { decrement: data.cantidad } },
+        data: { stockActual: { decrement: data.cantidad - desdeConcesion } },
       });
       // Solo se frena si la edicion pide unidades que no hay. Un stock que ya
       // estaba en negativo (ver webhook de Tiendup) no impide corregir la
@@ -403,6 +421,7 @@ export async function registrarEntrega(ventaId: string, cantidad: number, fecha?
   if (cantidad <= 0) throw new Error("La cantidad debe ser mayor a 0");
 
   const venta = await prisma.venta.findUniqueOrThrow({ where: { id: ventaId } });
+  if (venta.pagoPendiente) throw new Error(MENSAJE_PAGO_PENDIENTE);
   const restante = venta.cantidad - venta.cantidadEntregada;
   if (cantidad > restante) {
     throw new Error(`Solo quedan ${restante} unidades pendientes de entrega.`);
@@ -431,15 +450,27 @@ export async function registrarEntrega(ventaId: string, cantidad: number, fecha?
 export async function eliminarVenta(id: string) {
   await requireAdminPrincipal();
 
-  const venta = await prisma.venta.findUniqueOrThrow({ where: { id } });
+  const venta = await prisma.venta.findUniqueOrThrow({
+    where: { id },
+    include: { retirosConcesion: true },
+  });
 
+  // Una transferencia de Tiendup sin confirmar nunca desconto stock. Lo que
+  // salio de una concesion vuelve a ella solo (los retiros se borran en
+  // cascada con la venta).
+  const aDevolver = venta.pagoPendiente ? 0 : venta.cantidad - cantidadDesdeConcesion(venta);
   await prisma.$transaction([
     prisma.venta.delete({ where: { id } }),
-    prisma.producto.update({
-      where: { id: venta.productoId },
-      data: { stockActual: { increment: venta.cantidad } },
-    }),
+    ...(aDevolver > 0
+      ? [
+          prisma.producto.update({
+            where: { id: venta.productoId },
+            data: { stockActual: { increment: aDevolver } },
+          }),
+        ]
+      : []),
   ]);
+  if (venta.retirosConcesion.length > 0) revalidatePath("/concesion");
 
   revalidatePath("/ventas");
   revalidatePath("/dashboard");
@@ -475,6 +506,7 @@ export async function registrarCobro(ventaId: string, monto: number) {
   if (monto <= 0) throw new Error("El monto debe ser mayor a 0");
 
   const venta = await prisma.venta.findUniqueOrThrow({ where: { id: ventaId } });
+  if (venta.pagoPendiente) throw new Error(MENSAJE_PAGO_PENDIENTE);
   const restante = venta.precioTotal.minus(venta.montoCobrado);
   if (monto > restante.toNumber()) {
     throw new Error(`Solo restan ${restante.toString()} pendientes de cobro.`);

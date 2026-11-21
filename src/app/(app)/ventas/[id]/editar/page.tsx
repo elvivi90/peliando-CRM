@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { VentaForm } from "@/components/ventas/venta-form";
 import { partesArgentina } from "@/lib/date";
 import { nombreCliente } from "@/lib/format";
-import { saldoConcesion } from "@/lib/services/concesion";
+import { INCLUDE_SALDO, saldoConcesion } from "@/lib/services/concesion";
 
 export default async function EditarVentaPage({
   params,
@@ -19,7 +19,7 @@ export default async function EditarVentaPage({
       cliente: true,
       evento: true,
       liquidacionConcesion: {
-        include: { concesion: { include: { liquidaciones: true, devoluciones: true } } },
+        include: { concesion: { include: INCLUDE_SALDO } },
       },
     },
   });

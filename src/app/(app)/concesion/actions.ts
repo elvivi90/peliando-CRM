@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUsuario } from "@/lib/auth";
-import { saldoConcesion } from "@/lib/services/concesion";
+import { INCLUDE_SALDO, saldoConcesion } from "@/lib/services/concesion";
 import { parseFechaInput } from "@/lib/date";
 import { formatMoney, nombreCliente } from "@/lib/format";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
@@ -75,7 +75,7 @@ export async function crearLiquidacion(input: {
 
   const concesion = await prisma.concesion.findUniqueOrThrow({
     where: { id: data.concesionId },
-    include: { liquidaciones: true, devoluciones: true, cliente: true, producto: true },
+    include: { ...INCLUDE_SALDO, cliente: true, producto: true },
   });
 
   const saldo = saldoConcesion(concesion);
@@ -148,7 +148,7 @@ export async function crearDevolucion(input: {
 
   const concesion = await prisma.concesion.findUniqueOrThrow({
     where: { id: data.concesionId },
-    include: { liquidaciones: true, devoluciones: true },
+    include: INCLUDE_SALDO,
   });
 
   const saldo = saldoConcesion(concesion);

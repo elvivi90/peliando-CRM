@@ -5,10 +5,19 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TipoBadge } from "@/components/ui/badge";
 import { BotonEliminar } from "@/components/ui/boton-eliminar";
 import { Comentarios } from "@/components/clientes/comentarios";
-import { contactoCliente, formatDate, formatMoney, linkInstagram, nombreCliente } from "@/lib/format";
+import {
+  FORMA_PAGO_LABEL,
+  contactoCliente,
+  formatDate,
+  formatMoney,
+  linkInstagram,
+  nombreCliente,
+} from "@/lib/format";
+import { PagoCuentaCorrienteForm } from "@/components/clientes/pago-cuenta-corriente-form";
 import { FechaHora } from "@/components/ui/fecha-hora";
 import { getCuentaCorriente } from "@/lib/services/cuenta-corriente";
 import { NuevaEntregaForm } from "@/components/concesion/nueva-entrega-form";
+import { INCLUDE_SALDO, saldoConcesion } from "@/lib/services/concesion";
 import { getCurrentUsuario, esAdminPrincipal } from "@/lib/auth";
 import { eliminarCliente } from "@/app/(app)/clientes/actions";
 
@@ -23,8 +32,9 @@ export default async function ClienteDetailPage({
     where: { id },
     include: {
       comentarios: { orderBy: { fecha: "desc" }, include: { usuario: true } },
+      pagos: { orderBy: [{ fecha: "desc" }, { createdAt: "desc" }], include: { usuario: true } },
       concesiones: {
-        include: { producto: true, liquidaciones: true, devoluciones: true },
+        include: { producto: true, ...INCLUDE_SALDO },
         orderBy: { fechaEntrega: "desc" },
       },
     },
@@ -123,6 +133,27 @@ export default async function ClienteDetailPage({
                   </div>
                 </div>
               </div>
+              {cuentaCorriente.saldoPendienteCobro.gt(0) && (
+                <PagoCuentaCorrienteForm
+                  clienteId={id}
+                  saldo={cuentaCorriente.saldoPendienteCobro.toNumber()}
+                />
+              )}
+              {cliente.pagos.length > 0 && (
+                <details className="text-xs text-navy/60 mt-4">
+                  <summary className="cursor-pointer font-bold">
+                    Pagos registrados ({cliente.pagos.length})
+                  </summary>
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {cliente.pagos.map((p) => (
+                      <li key={p.id}>
+                        {formatDate(p.fecha)} · <span className="font-bold">{formatMoney(p.monto)}</span>
+                        {p.formaPago && ` · ${FORMA_PAGO_LABEL[p.formaPago]}`} · {p.usuario.nombre}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
 
@@ -138,7 +169,8 @@ export default async function ClienteDetailPage({
                   {cliente.concesiones.map((c) => {
                     const liquidado = c.liquidaciones.reduce((s, l) => s + l.cantidadVendida, 0);
                     const devuelto = c.devoluciones.reduce((s, d) => s + d.cantidad, 0);
-                    const saldo = c.cantidadEntregada - liquidado - devuelto;
+                    const retirado = c.retiros.reduce((s, r) => s + r.cantidad, 0);
+                    const saldo = saldoConcesion(c);
                     return (
                       <li key={c.id} className="border-t-2 border-navy/10 pt-3 first:border-0 first:pt-0">
                         <div className="flex justify-between items-center">
@@ -147,6 +179,7 @@ export default async function ClienteDetailPage({
                         </div>
                         <p className="text-xs text-navy/60 mt-1">
                           Entregado {c.cantidadEntregada} · Liquidado {liquidado} · Devuelto {devuelto} ·{" "}
+                          {retirado > 0 && <>Retirado por Tiendup {retirado} · </>}
                           <span className="font-extrabold text-navy">Saldo {saldo}</span>
                         </p>
                       </li>
@@ -192,9 +225,14 @@ export default async function ClienteDetailPage({
                   </thead>
                   <tbody>
                     {ventas.map((v) => (
-                      <tr key={v.id} className="border-b border-navy/10 last:border-0">
+                      // Toda la fila abre el detalle de la venta (como en Ventas).
+                      <tr key={v.id} className="relative border-b border-navy/10 last:border-0 hover:bg-navy/5">
                         <td className="px-5 py-2.5 text-navy/70"><FechaHora value={v.fecha} /></td>
-                        <td className="px-5 py-2.5">{v.producto.nombre}</td>
+                        <td className="px-5 py-2.5">
+                          <Link href={`/ventas/${v.id}`} className="after:absolute after:inset-0">
+                            {v.producto.nombre}
+                          </Link>
+                        </td>
                         <td className="px-5 py-2.5">
                           {v.cantidad}
                           {v.cantidadEntregada < v.cantidad && (
@@ -203,7 +241,14 @@ export default async function ClienteDetailPage({
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-2.5 font-bold">{formatMoney(v.precioTotal)}</td>
+                        <td className="px-5 py-2.5 font-bold whitespace-nowrap">
+                          {formatMoney(v.precioTotal)}
+                          {v.montoCobrado.lt(v.precioTotal) && (
+                            <span className="text-rosa text-xs font-bold ml-1" title="Cobro pendiente">
+                              ⏳
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

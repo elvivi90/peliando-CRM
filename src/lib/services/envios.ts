@@ -272,6 +272,7 @@ export async function ponerAlDiaConTiendup(
   ventas: {
     id: string;
     tiendupOrderId: number | null;
+    pagoPendiente: boolean;
     cantidad: number;
     cantidadEntregada: number;
     envio: Pick<Envio, "id" | "estado" | "trackingNumber"> | null;
@@ -281,7 +282,8 @@ export async function ponerAlDiaConTiendup(
   const sucursales = new Map<string, string>();
   const pendientes = ventas
     .filter((v) => {
-      if (v.tiendupOrderId === null) return false;
+      // Las transferencias sin confirmar las revisa el cron entregas-tiendup.
+      if (v.tiendupOrderId === null || v.pagoPendiente) return false;
       if (!v.envio) return v.cantidadEntregada < v.cantidad;
       return (
         v.envio.estado === "POR_ENVIAR" ||

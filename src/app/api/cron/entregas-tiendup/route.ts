@@ -5,7 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { nombreCliente } from "@/lib/format";
 import { envioCompletado, fetchTiendupOrder } from "@/lib/services/tiendup";
 import { enviarNotificacion } from "@/lib/services/notificaciones";
-import { sincronizarEnvioConTiendup } from "@/lib/services/envios";
+import { crearEnvioEnCorreo, sincronizarEnvioConTiendup } from "@/lib/services/envios";
+import {
+  borrarTransferenciaCancelada,
+  confirmarPagoTiendup,
+  ordenCancelada,
+  ordenPagada,
+} from "@/lib/services/ventas-tiendup";
 
 // Un pedido pago que lleva mas que esto sin entregarse dispara el aviso.
 const DIAS_PARA_AVISAR = 3;
@@ -35,10 +41,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
+  const transferencias = await revisarTransferenciasPendientes();
+
   const aRevisar = await prisma.venta.findMany({
     where: {
       origen: "WEBHOOK_TIENDUP",
       tiendupOrderId: { not: null },
+      pagoPendiente: false,
       OR: [
         { cantidadEntregada: { lt: prisma.venta.fields.cantidad } },
         {
@@ -120,6 +129,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    transferencias,
     revisadas: aRevisar.length,
     entregadas: entregadas.size,
     enviosActualizados,
@@ -129,4 +139,46 @@ export async function GET(request: NextRequest) {
     atrasadas: atrasadas.length,
     errores,
   });
+}
+
+/**
+ * Transferencias de Tiendup todavia sin confirmar (ver
+ * services/ventas-tiendup): si la orden se cancelo, se borra la venta; si ya
+ * figura pagada (el webhook del pago no llego o fallo), se confirma.
+ */
+async function revisarTransferenciasPendientes() {
+  const pendientes = await prisma.venta.findMany({
+    where: { pagoPendiente: true, tiendupOrderId: { not: null } },
+    select: { id: true, tiendupOrderId: true },
+  });
+
+  let confirmadas = 0;
+  let borradas = 0;
+  const errores: number[] = [];
+  for (const venta of pendientes) {
+    try {
+      const orden = await fetchTiendupOrder(venta.tiendupOrderId!, { timeoutMs: 10000 });
+      if (ordenCancelada(orden)) {
+        if (await borrarTransferenciaCancelada(venta.id)) borradas++;
+      } else if (ordenPagada(orden)) {
+        const confirmada = await confirmarPagoTiendup(venta.id, orden);
+        if (confirmada) {
+          confirmadas++;
+          if (confirmada.envioId) await crearEnvioEnCorreo(confirmada.envioId);
+          revalidatePath(`/ventas/${venta.id}`);
+        }
+      }
+    } catch (err) {
+      console.error(`[tiendup] chequeo de la transferencia de la orden #${venta.tiendupOrderId}:`, err);
+      errores.push(venta.tiendupOrderId!);
+    }
+  }
+
+  if (confirmadas > 0 || borradas > 0) {
+    revalidatePath("/ventas");
+    revalidatePath("/dashboard");
+    revalidatePath("/reportes");
+    revalidatePath("/productos");
+  }
+  return { pendientes: pendientes.length, confirmadas, borradas, errores };
 }
