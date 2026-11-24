@@ -238,12 +238,17 @@ export async function actualizarSeguimiento(envio: Envio) {
  * seguimiento de MiCorreo no encuentra los envios importados por API si no
  * tiene el numero. Con el numero guardado, el cron envios-correo puede
  * seguirlo hasta ENTREGADO. Devuelve los cambios aplicados (null si no hubo).
+ *
+ * Un ERROR_CREACION que Tiendup ya marca despachado se cargo a mano en el
+ * portal de MiCorreo (el alta por API fallo): pasa a ENVIADO y se borra el
+ * error. Queda sin costoEnvioReal porque la API no lo cotizo; tambien por eso
+ * el cron envios-correo no lo sigue.
  */
 export function cambiosEnvioSegunTiendup(
   envio: Pick<Envio, "estado" | "trackingNumber">,
   orden: Pick<TiendupOrder, "status" | "shipping">,
 ) {
-  const cambios: { estado?: EstadoEnvio; trackingNumber?: string } = {};
+  const cambios: { estado?: EstadoEnvio; trackingNumber?: string; errorMensaje?: null } = {};
 
   // A veces viene con prefijo "TN " o con espacios.
   const tracking = orden.shipping?.tracking_code?.replace(/^TN\s*/i, "").replace(/\s+/g, "") || null;
@@ -251,6 +256,10 @@ export function cambiosEnvioSegunTiendup(
 
   const despachado = orden.shipping?.status === "shipped" || orden.status === "closed";
   if (despachado && envio.estado === "POR_ENVIAR") cambios.estado = "ENVIADO";
+  if (despachado && envio.estado === "ERROR_CREACION") {
+    cambios.estado = "ENVIADO";
+    cambios.errorMensaje = null;
+  }
 
   return Object.keys(cambios).length > 0 ? cambios : null;
 }
@@ -287,6 +296,7 @@ export async function ponerAlDiaConTiendup(
       if (!v.envio) return v.cantidadEntregada < v.cantidad;
       return (
         v.envio.estado === "POR_ENVIAR" ||
+        v.envio.estado === "ERROR_CREACION" ||
         (v.envio.estado === "ENVIADO" && !v.envio.trackingNumber)
       );
     })

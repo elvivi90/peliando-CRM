@@ -45,7 +45,7 @@ export async function EnvioVenta({
     // todavia no tiene: se muestra ya y se guarda despues de responder, para
     // que el listado de ventas tambien lo vea sin esperar al cron diario.
     const cambios =
-      orden && envio.estado !== "ERROR_CREACION"
+      orden
         ? cambiosEnvioSegunTiendup(
             { estado: envio.estado as EstadoEnvio, trackingNumber: envio.trackingNumber },
             orden,

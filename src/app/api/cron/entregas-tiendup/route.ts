@@ -29,9 +29,11 @@ const DIAS_PARA_AVISAR = 3;
  * La entrega queda con la fecha del chequeo: Tiendup no informa cuando se
  * despacho, asi que puede quedar unos minutos despues de la real.
  *
- * Tambien revisa las ventas con Envio por Correo todavia "Por enviar" o sin
- * numero de seguimiento (aunque la venta ya figure entregada): les copia el
- * despacho y el seguimiento de Tiendup (ver sincronizarEnvioConTiendup).
+ * Tambien revisa las ventas con Envio por Correo todavia "Por enviar", con
+ * error de alta o sin numero de seguimiento (aunque la venta ya figure
+ * entregada): les copia el despacho y el seguimiento de Tiendup (ver
+ * sincronizarEnvioConTiendup). Un envio con error que Tiendup marca enviado
+ * se cargo a mano en el portal y pasa a "Enviado".
  * Es lo que mantiene al dia el estado de los envios: envios-correo (el
  * seguimiento en MiCorreo) no esta programado.
  */
@@ -52,7 +54,11 @@ export async function GET(request: NextRequest) {
         { cantidadEntregada: { lt: prisma.venta.fields.cantidad } },
         {
           envio: {
-            OR: [{ estado: "POR_ENVIAR" }, { estado: "ENVIADO", trackingNumber: null }],
+            OR: [
+              { estado: "POR_ENVIAR" },
+              { estado: "ERROR_CREACION" },
+              { estado: "ENVIADO", trackingNumber: null },
+            ],
           },
         },
       ],
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
     try {
       const orden = await fetchTiendupOrder(venta.tiendupOrderId!, { timeoutMs: 10000 });
 
-      if (venta.envio && venta.envio.estado !== "ERROR_CREACION") {
+      if (venta.envio) {
         if (await sincronizarEnvioConTiendup(venta.envio, orden)) {
           enviosActualizados++;
           revalidatePath(`/ventas/${venta.id}`);
