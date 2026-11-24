@@ -166,6 +166,19 @@ export default async function ReportesPage({
           stripe="amarillo"
           hintColor={margen?.margen.lt(0) ? "rosa" : undefined}
         />
+        {/* No es el margen: descuenta todos los gastos operativos del periodo
+            pero no la produccion (las tiradas son inversion). */}
+        <StatCard
+          label={`Neto por unidad (${anual ? anioSel : `${MESES[mesSel - 1].slice(0, 3)} ${anioSel}`})`}
+          value={
+            resumen.unidadesVendidas > 0
+              ? `${formatMoney(resumen.neto.div(resumen.unidadesVendidas))} c/u`
+              : "—"
+          }
+          hint="resultado neto ÷ unidades: con todos los gastos operativos, sin producción"
+          stripe="navy"
+          hintColor={resumen.neto.lt(0) ? "rosa" : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
